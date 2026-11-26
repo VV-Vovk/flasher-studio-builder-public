@@ -1,0 +1,41 @@
+name: STM32F070F6P6 compiler smoke
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'profiles/stm32-bare.json'
+      - '.github/workflows/stm32f070-test.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  compile:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - run: bash tools/universal/setup-native.sh stm32-bare system STM32F070F6P6
+      - name: Compile exact F070 with CMSIS startup and check image
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/src"
+          cat > "$RUNNER_TEMP/src/main.c" <<'C'
+          #include "stm32f0xx.h"
+          #ifndef STM32F070x6
+          #error Incorrect target
+          #endif
+          int main(void) { for (;;) { __NOP(); } }
+          C
+          python3 tools/universal/build.py --source "$RUNNER_TEMP/src/main.c" --engine stm32-bare --native-target STM32F070F6P6 --work "$RUNNER_TEMP/work" --out "$RUNNER_TEMP/output" --request-id 00000000000000000000000000000000
+          python3 - <<'PY'
+          import json,os,struct,pathlib
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'output'
+          m=json.loads((p/'manifest.json').read_text())
+          b=(p/'firmware.bin').read_bytes()
+          sp,pc=struct.unpack_from('<II',b)
+          assert sp==0x20001800 and pc&1 and 0x08000000<=pc-1<0x08000000+len(b)<=0x08008000
+          ranges=next(x['ranges'] for x in m['flashLayout']['entries'] if x['file']=='firmware.hex')
+          assert ranges[0]['start']==0x08000000 and all(x['endExclusive']<=0x08008000 for x in ranges)
+          print('F070 exact startup, vector, flash and RAM verified')
+          PY

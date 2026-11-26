@@ -1,0 +1,12 @@
+{
+  "esp32:esp32": {"version":"3.1.3", "url":"https://espressif.github.io/arduino-esp32/package_esp32_index.json"},
+  "esp8266:esp8266": {"version":"3.1.2", "url":"https://arduino.esp8266.com/stable/package_esp8266com_index.json"},
+  "arduino:avr": {"version":"1.8.6"},
+  "arduino:megaavr": {"version":"1.8.8"},
+  "arduino:samd": {"version":"1.8.14"},
+  "arduino:renesas_uno": {"version":"1.3.2"},
+  "MiniCore:avr": {"version":"3.0.2", "url":"https://mcudude.github.io/MiniCore/package_MCUdude_MiniCore_index.json"},
+  "STMicroelectronics:stm32": {"version":"2.8.1", "url":"https://raw.githubusercontent.com/stm32duino/BoardManagerFiles/main/package_stmicroelectronics_index.json"},
+  "adafruit:nrf52": {"version":"1.6.1", "url":"https://adafruit.github.io/arduino-board-index/package_adafruit_index.json"},
+  "rp2040:rp2040": {"version":"4.2.0", "url":"https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json"}
+}

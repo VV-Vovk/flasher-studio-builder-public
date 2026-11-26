@@ -1,0 +1,356 @@
+{
+  "STM32F030F4": {
+    "family": "f0",
+    "define": "STM32F030x6",
+    "cpu": "cortex-m0",
+    "flashKiB": 16,
+    "ramKiB": 4,
+    "deviceTag": "v2.3.5"
+  },
+  "STM32F030K6": {
+    "family": "f0",
+    "define": "STM32F030x6",
+    "cpu": "cortex-m0",
+    "flashKiB": 32,
+    "ramKiB": 4,
+    "deviceTag": "v2.3.5"
+  },
+  "STM32F030C6": {
+    "family": "f0",
+    "define": "STM32F030x6",
+    "cpu": "cortex-m0",
+    "flashKiB": 32,
+    "ramKiB": 4,
+    "deviceTag": "v2.3.5"
+  },
+  "STM32F030C8": {
+    "family": "f0",
+    "define": "STM32F030x8",
+    "cpu": "cortex-m0",
+    "flashKiB": 64,
+    "ramKiB": 8,
+    "deviceTag": "v2.3.5"
+  },
+  "STM32F030R8": {
+    "family": "f0",
+    "define": "STM32F030x8",
+    "cpu": "cortex-m0",
+    "flashKiB": 64,
+    "ramKiB": 8,
+    "deviceTag": "v2.3.5"
+  },
+  "STM32F103C8": {
+    "family": "f1",
+    "define": "STM32F103xB",
+    "cpu": "cortex-m3",
+    "flashKiB": 64,
+    "ramKiB": 20,
+    "deviceTag": "v4.3.2"
+  },
+  "STM32F103CB": {
+    "family": "f1",
+    "define": "STM32F103xB",
+    "cpu": "cortex-m3",
+    "flashKiB": 128,
+    "ramKiB": 20,
+    "deviceTag": "v4.3.2"
+  },
+  "STM32C011F4": {
+    "family": "c0",
+    "define": "STM32C011xx",
+    "cpu": "cortex-m0plus",
+    "flashKiB": 16,
+    "ramKiB": 6,
+    "cubeTag": "v1.4.0"
+  },
+  "STM32C011F6": {
+    "family": "c0",
+    "define": "STM32C011xx",
+    "cpu": "cortex-m0plus",
+    "flashKiB": 32,
+    "ramKiB": 6,
+    "cubeTag": "v1.4.0"
+  },
+  "STM32C031C6": {
+    "family": "c0",
+    "define": "STM32C031xx",
+    "cpu": "cortex-m0plus",
+    "flashKiB": 32,
+    "ramKiB": 12,
+    "cubeTag": "v1.4.0"
+  },
+  "STM32C031F6": {
+    "family": "c0",
+    "define": "STM32C031xx",
+    "cpu": "cortex-m0plus",
+    "flashKiB": 32,
+    "ramKiB": 12,
+    "cubeTag": "v1.4.0"
+  },
+  "STM32G071CB": {
+    "family": "g0",
+    "define": "STM32G071xx",
+    "cpu": "cortex-m0plus",
+    "flashKiB": 128,
+    "ramKiB": 36,
+    "cubeTag": "v1.6.2"
+  },
+  "STM32G071RB": {
+    "family": "g0",
+    "define": "STM32G071xx",
+    "cpu": "cortex-m0plus",
+    "flashKiB": 128,
+    "ramKiB": 36,
+    "cubeTag": "v1.6.2"
+  },
+  "STM32G030F6": {
+    "family": "g0",
+    "define": "STM32G030xx",
+    "cpu": "cortex-m0plus",
+    "flashKiB": 32,
+    "ramKiB": 8,
+    "cubeTag": "v1.6.2"
+  },
+  "STM32G030K8": {
+    "family": "g0",
+    "define": "STM32G030xx",
+    "cpu": "cortex-m0plus",
+    "flashKiB": 64,
+    "ramKiB": 8,
+    "cubeTag": "v1.6.2"
+  },
+  "STM32G431CB": {
+    "family": "g4",
+    "define": "STM32G431xx",
+    "cpu": "cortex-m4",
+    "flashKiB": 128,
+    "ramKiB": 16,
+    "cubeTag": "v1.6.2",
+    "fpu": "fpv4-sp-d16",
+    "memoryNote": "Conservative SRAM1 only; other RAM banks require custom linker."
+  },
+  "STM32G431RB": {
+    "family": "g4",
+    "define": "STM32G431xx",
+    "cpu": "cortex-m4",
+    "flashKiB": 128,
+    "ramKiB": 16,
+    "cubeTag": "v1.6.2",
+    "fpu": "fpv4-sp-d16",
+    "memoryNote": "Conservative SRAM1 only; other RAM banks require custom linker."
+  },
+  "STM32G431KB": {
+    "family": "g4",
+    "define": "STM32G431xx",
+    "cpu": "cortex-m4",
+    "flashKiB": 128,
+    "ramKiB": 16,
+    "cubeTag": "v1.6.2",
+    "fpu": "fpv4-sp-d16",
+    "memoryNote": "Conservative SRAM1 only; other RAM banks require custom linker."
+  },
+  "STM32F401CC": {
+    "family": "f4",
+    "define": "STM32F401xC",
+    "cpu": "cortex-m4",
+    "flashKiB": 256,
+    "ramKiB": 64,
+    "cubeTag": "v1.28.1",
+    "fpu": "fpv4-sp-d16"
+  },
+  "STM32F401RC": {
+    "family": "f4",
+    "define": "STM32F401xC",
+    "cpu": "cortex-m4",
+    "flashKiB": 256,
+    "ramKiB": 64,
+    "cubeTag": "v1.28.1",
+    "fpu": "fpv4-sp-d16"
+  },
+  "STM32F411CE": {
+    "family": "f4",
+    "define": "STM32F411xE",
+    "cpu": "cortex-m4",
+    "flashKiB": 512,
+    "ramKiB": 128,
+    "cubeTag": "v1.28.1",
+    "fpu": "fpv4-sp-d16"
+  },
+  "STM32F411RE": {
+    "family": "f4",
+    "define": "STM32F411xE",
+    "cpu": "cortex-m4",
+    "flashKiB": 512,
+    "ramKiB": 128,
+    "cubeTag": "v1.28.1",
+    "fpu": "fpv4-sp-d16"
+  },
+  "STM32F303CB": {
+    "family": "f3",
+    "define": "STM32F303xC",
+    "cpu": "cortex-m4",
+    "flashKiB": 128,
+    "ramKiB": 32,
+    "cubeTag": "v1.11.5",
+    "fpu": "fpv4-sp-d16",
+    "memoryNote": "Conservative SRAM only, excludes CCM."
+  },
+  "STM32F303CC": {
+    "family": "f3",
+    "define": "STM32F303xC",
+    "cpu": "cortex-m4",
+    "flashKiB": 256,
+    "ramKiB": 32,
+    "cubeTag": "v1.11.5",
+    "fpu": "fpv4-sp-d16",
+    "memoryNote": "Conservative SRAM only, excludes CCM."
+  },
+  "STM32F303RC": {
+    "family": "f3",
+    "define": "STM32F303xC",
+    "cpu": "cortex-m4",
+    "flashKiB": 256,
+    "ramKiB": 32,
+    "cubeTag": "v1.11.5",
+    "fpu": "fpv4-sp-d16",
+    "memoryNote": "Conservative SRAM only, excludes CCM."
+  },
+  "STM32F205RG": {
+    "family": "f2",
+    "define": "STM32F205xx",
+    "cpu": "cortex-m3",
+    "flashKiB": 1024,
+    "ramKiB": 128,
+    "cubeTag": "v1.9.6"
+  },
+  "STM32L072CB": {
+    "family": "l0",
+    "define": "STM32L072xx",
+    "cpu": "cortex-m0plus",
+    "flashKiB": 128,
+    "ramKiB": 20,
+    "cubeTag": "v1.12.3"
+  },
+  "STM32L072CZ": {
+    "family": "l0",
+    "define": "STM32L072xx",
+    "cpu": "cortex-m0plus",
+    "flashKiB": 192,
+    "ramKiB": 20,
+    "cubeTag": "v1.12.3"
+  },
+  "STM32L432KC": {
+    "family": "l4",
+    "define": "STM32L432xx",
+    "cpu": "cortex-m4",
+    "flashKiB": 256,
+    "ramKiB": 48,
+    "cubeTag": "v1.18.2",
+    "fpu": "fpv4-sp-d16",
+    "memoryNote": "SRAM1 only; SRAM2 requires custom linker."
+  },
+  "STM32F070F6": {
+    "family": "f0",
+    "define": "STM32F070x6",
+    "cpu": "cortex-m0",
+    "flashKiB": 32,
+    "ramKiB": 6,
+    "deviceTag": "v2.3.5"
+  },
+  "STM32F042F6": {
+    "family": "f0",
+    "define": "STM32F042x6",
+    "cpu": "cortex-m0",
+    "flashKiB": 32,
+    "ramKiB": 6,
+    "deviceTag": "v2.3.5"
+  },
+  "STM32F042C6": {
+    "family": "f0",
+    "define": "STM32F042x6",
+    "cpu": "cortex-m0",
+    "flashKiB": 32,
+    "ramKiB": 6,
+    "deviceTag": "v2.3.5"
+  },
+  "STM32F042K6": {
+    "family": "f0",
+    "define": "STM32F042x6",
+    "cpu": "cortex-m0",
+    "flashKiB": 32,
+    "ramKiB": 6,
+    "deviceTag": "v2.3.5"
+  },
+  "STM32F070C6": {
+    "family": "f0",
+    "define": "STM32F070x6",
+    "cpu": "cortex-m0",
+    "flashKiB": 32,
+    "ramKiB": 6,
+    "deviceTag": "v2.3.5"
+  },
+  "STM32F070CB": {
+    "family": "f0",
+    "define": "STM32F070xB",
+    "cpu": "cortex-m0",
+    "flashKiB": 128,
+    "ramKiB": 16,
+    "deviceTag": "v2.3.5"
+  },
+  "STM32F070RB": {
+    "family": "f0",
+    "define": "STM32F070xB",
+    "cpu": "cortex-m0",
+    "flashKiB": 128,
+    "ramKiB": 16,
+    "deviceTag": "v2.3.5"
+  },
+  "STM32F072RB": {
+    "family": "f0",
+    "define": "STM32F072xB",
+    "cpu": "cortex-m0",
+    "flashKiB": 128,
+    "ramKiB": 16,
+    "deviceTag": "v2.3.5"
+  },
+  "STM32F072CB": {
+    "family": "f0",
+    "define": "STM32F072xB",
+    "cpu": "cortex-m0",
+    "flashKiB": 128,
+    "ramKiB": 16,
+    "deviceTag": "v2.3.5"
+  },
+  "STM32F103R8": {
+    "family": "f1",
+    "define": "STM32F103xB",
+    "cpu": "cortex-m3",
+    "flashKiB": 64,
+    "ramKiB": 20,
+    "deviceTag": "v4.3.2"
+  },
+  "STM32F103RB": {
+    "family": "f1",
+    "define": "STM32F103xB",
+    "cpu": "cortex-m3",
+    "flashKiB": 128,
+    "ramKiB": 20,
+    "deviceTag": "v4.3.2"
+  },
+  "STM32F103V8": {
+    "family": "f1",
+    "define": "STM32F103xB",
+    "cpu": "cortex-m3",
+    "flashKiB": 64,
+    "ramKiB": 20,
+    "deviceTag": "v4.3.2"
+  },
+  "STM32F103VB": {
+    "family": "f1",
+    "define": "STM32F103xB",
+    "cpu": "cortex-m3",
+    "flashKiB": 128,
+    "ramKiB": 20,
+    "deviceTag": "v4.3.2"
+  }
+}

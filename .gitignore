@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+requests/
+*.zip
+*.bin
+*.elf
+*.hex
+*.uf2

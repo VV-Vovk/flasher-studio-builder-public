@@ -1,0 +1,318 @@
+name: Builder validation — real builds
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Core tests or expanded hardware matrix'
+        type: choice
+        options: [core, expanded]
+        default: core
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    permissions: {contents: read}
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - run: |
+          python3 -m unittest discover -s tests -v
+          python3 -m unittest discover -s tests/legacy -v
+  real-builds:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions: {contents: read}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: esp32c3, fqbn: 'esp32:esp32:esp32c3', suite: core}
+          - {name: uno, fqbn: 'arduino:avr:uno', suite: core}
+          - {name: pio-uno, fqbn: '', suite: core}
+          - {name: stm32, fqbn: 'STMicroelectronics:stm32:GenF1:pnum=BLUEPILL_F103C8', suite: expanded}
+          - {name: pico, fqbn: 'rp2040:rp2040:rpipico', suite: expanded}
+          - {name: pico2, fqbn: 'rp2040:rp2040:rpipico2', suite: expanded}
+          - {name: nrf52, fqbn: 'adafruit:nrf52:feather52840', suite: expanded}
+          - {name: atmega328p, fqbn: 'MiniCore:avr:328:variant=modelP,clock=8MHz_internal', suite: expanded}
+          - {name: esp8266, fqbn: 'esp8266:esp8266:generic', suite: expanded}
+          - {name: esp32, fqbn: 'esp32:esp32:esp32', suite: expanded}
+          - {name: esp32s3, fqbn: 'esp32:esp32:esp32s3', suite: expanded}
+          - {name: esp32c6, fqbn: 'esp32:esp32:esp32c6', suite: expanded}
+          - {name: mega, fqbn: 'arduino:avr:mega:cpu=atmega2560', suite: expanded}
+          - {name: leonardo, fqbn: 'arduino:avr:leonardo', suite: expanded}
+          - {name: samd, fqbn: 'arduino:samd:mkrzero', suite: expanded}
+          - {name: unor4, fqbn: 'arduino:renesas_uno:minima', suite: expanded}
+          - {name: nanoevery, fqbn: 'arduino:megaavr:nona4809', suite: expanded}
+    steps:
+      - uses: actions/checkout@v5
+        if: matrix.suite == 'core' || inputs.suite == 'expanded'
+        with: {persist-credentials: false}
+      - name: Set build cache directories
+        if: matrix.suite == 'core' || inputs.suite == 'expanded'
+        run: |
+          echo "ARDUINO_BUILD_CACHE_PATH=$RUNNER_TEMP/flasher-arduino-cache" >> "$GITHUB_ENV"
+          echo "PLATFORMIO_BUILD_CACHE_DIR=$RUNNER_TEMP/flasher-pio-build-cache" >> "$GITHUB_ENV"
+      - uses: arduino/setup-arduino-cli@v2
+        if: matrix.name != 'pio-uno' && (matrix.suite == 'core' || inputs.suite == 'expanded')
+        with: {version: "1.2.2"}
+      - name: Select Arduino download cache
+        id: core-cache
+        if: matrix.name != 'pio-uno' && (matrix.suite == 'core' || inputs.suite == 'expanded')
+        env:
+          FQBN: ${{ matrix.fqbn }}
+        run: echo "key=$(python3 tools/universal/cache_key.py "$FQBN" "")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v5
+        if: steps.core-cache.outputs.key != '' && steps.core-cache.outputs.key != 'none'
+        with:
+          path: ~/.arduino15/staging
+          key: arduino-downloads-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.core-cache.outputs.key }}
+      - uses: actions/cache@v5
+        if: steps.core-cache.outputs.key != '' && steps.core-cache.outputs.key != 'none'
+        with:
+          path: ${{ runner.temp }}/flasher-arduino-cache/cores
+          key: arduino-cores-1.2.2-${{ runner.os }}-${{ runner.arch }}-${{ steps.core-cache.outputs.key }}
+      - uses: actions/cache@v5
+        if: matrix.name == 'pio-uno'
+        with:
+          path: ~/.platformio/.cache
+          key: pio-downloads-6.1.18-${{ runner.os }}-${{ runner.arch }}-trusted-v1
+      - uses: actions/cache@v5
+        if: matrix.name == 'pio-uno'
+        with:
+          path: ${{ runner.temp }}/flasher-pio-build-cache
+          key: pio-objects-6.1.18-${{ runner.os }}-${{ runner.arch }}-trusted-v1
+      - uses: actions/setup-python@v6
+        if: matrix.name == 'pio-uno' || matrix.name == 'nrf52'
+        with: {python-version: '3.11'}
+      - name: Build Arduino with automatically resolved ArduinoJson
+        if: matrix.name != 'pio-uno' && (matrix.suite == 'core' || inputs.suite == 'expanded')
+        env:
+          FQBN: ${{ matrix.fqbn }}
+        run: |
+          cp examples/Blink/Blink.ino "$RUNNER_TEMP/source.ino"
+          if [[ "$FQBN" == 'arduino:avr:uno' || "$FQBN" == 'esp32:esp32:esp32c3' ]]; then
+            cat > "$RUNNER_TEMP/source.ino" <<'EOF'
+          #include <ArduinoJson.h>
+          void setup() { Serial.begin(9600); JsonDocument d; d["ready"] = true; serializeJson(d, Serial); }
+          void loop() {}
+          EOF
+          fi
+          python3 tools/universal/build.py --source "$RUNNER_TEMP/source.ino" --work "$RUNNER_TEMP/work" --out "$RUNNER_TEMP/output" --request-id 00000000000000000000000000000000 --fqbn "$FQBN"
+      - name: Rebuild Arduino Uno with resolved dependency lock
+        if: matrix.name == 'uno'
+        run: |
+          mkdir -p "$RUNNER_TEMP/replay"
+          cp "$RUNNER_TEMP/source.ino" "$RUNNER_TEMP/replay/source.ino"
+          cp "$RUNNER_TEMP/output/flasher-lock.json" "$RUNNER_TEMP/replay/"
+          (cd "$RUNNER_TEMP/replay" && zip "$RUNNER_TEMP/replay.zip" source.ino flasher-lock.json)
+          python3 tools/universal/build.py --source "$RUNNER_TEMP/replay.zip" --work "$RUNNER_TEMP/replay-work" --out "$RUNNER_TEMP/replay-output" --request-id 11111111111111111111111111111111 --fqbn arduino:avr:uno
+          cmp "$RUNNER_TEMP/output/flasher-lock.json" "$RUNNER_TEMP/replay-output/flasher-lock.json"
+      - name: Build wrapped multi-tab Arduino project with bundled legacy library
+        if: matrix.name == 'uno'
+        run: |
+          mkdir -p "$RUNNER_TEMP/legacy-fixture/Export/Demo" "$RUNNER_TEMP/legacy-fixture/Export/libraries/OldLib"
+          cat > "$RUNNER_TEMP/legacy-fixture/Export/Demo/Demo.ino" <<'EOF'
+          #include <OldLib.h>
+          void setup() { Serial.begin(9600); Serial.println(oldValue()); extraTab(); }
+          void loop() {}
+          EOF
+          echo 'void extraTab() { Serial.println("tab"); }' > "$RUNNER_TEMP/legacy-fixture/Export/Demo/Extra.ino"
+          echo 'int oldValue();' > "$RUNNER_TEMP/legacy-fixture/Export/libraries/OldLib/OldLib.h"
+          echo 'int oldValue() { return 42; }' > "$RUNNER_TEMP/legacy-fixture/Export/libraries/OldLib/OldLib.cpp"
+          echo 'OldLib' > "$RUNNER_TEMP/legacy-fixture/Export/libraries.txt"
+          (cd "$RUNNER_TEMP/legacy-fixture" && zip -r "$RUNNER_TEMP/legacy-fixture.zip" Export)
+          python3 tools/universal/build.py --source "$RUNNER_TEMP/legacy-fixture.zip" --work "$RUNNER_TEMP/legacy-work" --out "$RUNNER_TEMP/legacy-output" --request-id 22222222222222222222222222222222 --fqbn arduino:avr:uno
+      - name: Build PlatformIO with declared dependency
+        if: matrix.name == 'pio-uno'
+        run: |
+          python -m pip install platformio==6.1.18
+          (cd examples/PlatformIO && zip -r "$RUNNER_TEMP/source.zip" .)
+          python tools/universal/build.py --source "$RUNNER_TEMP/source.zip" --work "$RUNNER_TEMP/work" --out "$RUNNER_TEMP/output" --request-id 00000000000000000000000000000000
+      - name: PlatformIO automatic dependency and lock replay
+        if: matrix.name == 'pio-uno'
+        run: |
+          mkdir -p "$RUNNER_TEMP/pio-auto/src"
+          cp examples/PlatformIO/src/main.cpp "$RUNNER_TEMP/pio-auto/src/main.cpp"
+          printf '[env:uno]\nplatform = atmelavr\nboard = uno\nframework = arduino\n' > "$RUNNER_TEMP/pio-auto/platformio.ini"
+          (cd "$RUNNER_TEMP/pio-auto" && zip -r "$RUNNER_TEMP/pio-auto.zip" .)
+          python tools/universal/build.py --source "$RUNNER_TEMP/pio-auto.zip" --work "$RUNNER_TEMP/pio-auto-work" --out "$RUNNER_TEMP/pio-auto-out" --request-id 44444444444444444444444444444444
+          cp "$RUNNER_TEMP/pio-auto-out/flasher-lock.json" "$RUNNER_TEMP/pio-auto/"
+          (cd "$RUNNER_TEMP/pio-auto" && zip -r "$RUNNER_TEMP/pio-replay.zip" .)
+          python tools/universal/build.py --source "$RUNNER_TEMP/pio-replay.zip" --work "$RUNNER_TEMP/pio-replay-work" --out "$RUNNER_TEMP/pio-replay-out" --request-id 55555555555555555555555555555555
+          cmp "$RUNNER_TEMP/pio-auto-out/flasher-lock.json" "$RUNNER_TEMP/pio-replay-out/flasher-lock.json"
+      - name: Arduino Git dependency pinned and replayed
+        if: matrix.name == 'uno'
+        run: |
+          mkdir -p "$RUNNER_TEMP/git-fixture"
+          cp "$RUNNER_TEMP/source.ino" "$RUNNER_TEMP/git-fixture/source.ino"
+          printf '%s\n' '[{"url":"https://github.com/bblanchon/ArduinoJson.git","ref":"v7.3.1","folder":"ArduinoJson"}]' > "$RUNNER_TEMP/git-fixture/flasher-git-libraries.json"
+          (cd "$RUNNER_TEMP/git-fixture" && zip -r "$RUNNER_TEMP/git-fixture.zip" .)
+          python tools/universal/build.py --source "$RUNNER_TEMP/git-fixture.zip" --work "$RUNNER_TEMP/git-work" --out "$RUNNER_TEMP/git-out" --request-id 66666666666666666666666666666666 --fqbn arduino:avr:uno
+          cp "$RUNNER_TEMP/git-out/flasher-lock.json" "$RUNNER_TEMP/git-fixture/"
+          (cd "$RUNNER_TEMP/git-fixture" && zip -r "$RUNNER_TEMP/git-replay.zip" .)
+          python tools/universal/build.py --source "$RUNNER_TEMP/git-replay.zip" --work "$RUNNER_TEMP/git-replay-work" --out "$RUNNER_TEMP/git-replay-out" --request-id 77777777777777777777777777777777 --fqbn arduino:avr:uno
+          cmp "$RUNNER_TEMP/git-out/flasher-lock.json" "$RUNNER_TEMP/git-replay-out/flasher-lock.json"
+  native-builds:
+    if: inputs.suite == 'expanded'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    permissions: {contents: read}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: esp-idf, target: esp32c3, version: v5.4.2}
+          - {name: stm32cube, target: project-configured, version: system}
+          - {name: zephyr, target: nrf52840dk/nrf52840, version: v4.1.0}
+          - {name: pico-sdk, target: pico, version: '2.1.1'}
+          - {name: pico-sdk, target: pico2, version: '2.1.1'}
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v6
+        with: {python-version: '3.11'}
+      - name: Provision SDK
+        env:
+          ENGINE: ${{ matrix.name }}
+          VERSION: ${{ matrix.version }}
+          TARGET: ${{ matrix.target }}
+        run: bash tools/universal/setup-native.sh "$ENGINE" "$VERSION" "$TARGET"
+      - uses: actions/cache@v5
+        if: matrix.name == 'pico-sdk' || matrix.name == 'stm32cube'
+        with:
+          path: ${{ runner.temp }}/flasher-ccache
+          key: native-objects-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.name }}-${{ matrix.version }}-${{ matrix.target }}
+      - name: Compile native sample
+        env:
+          ENGINE: ${{ matrix.name }}
+          VERSION: ${{ matrix.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          (cd "examples/native/$ENGINE" && zip -r "$RUNNER_TEMP/source.zip" .)
+          python tools/universal/build.py --source "$RUNNER_TEMP/source.zip" --work "$RUNNER_TEMP/work" --out "$RUNNER_TEMP/output" --engine "$ENGINE" --native-target "$TARGET" --sdk-version "$VERSION" --request-id 33333333333333333333333333333333
+  stm32-bare:
+    if: inputs.suite == 'expanded'
+    runs-on: ubuntu-24.04
+    permissions: {contents: read}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [STM32F030F4P6, STM32F030C8T6, STM32F103C8T6]
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - name: Provision CMSIS and GNU Arm
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash tools/universal/setup-native.sh stm32-bare system "$TARGET"
+      - uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/flasher-ccache
+          key: stm32-ccache-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('tools/universal/stm32.py', 'tools/universal/setup-native.sh', 'tools/universal/stm32-sdk-checkout.sh', 'profiles/stm32-bare.json') }}
+      - name: Build standalone C file
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          if [[ "$TARGET" == STM32F103* ]]; then
+            sed 's/stm32f0xx/stm32f1xx/' examples/stm32-bare/main.c > "$RUNNER_TEMP/source.c"
+          else
+            cp examples/stm32-bare/main.c "$RUNNER_TEMP/source.c"
+          fi
+          python3 tools/universal/build.py --source "$RUNNER_TEMP/source.c" --engine auto --native-target "$TARGET" --work "$RUNNER_TEMP/work" --out "$RUNNER_TEMP/output" --request-id 00000000000000000000000000000000
+          python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); assert any(x["file"]=="firmware.hex" and x["ranges"][0]["start"]==0x08000000 for x in m["flashLayout"]["entries"])' "$RUNNER_TEMP/output/manifest.json"
+      - name: Build standalone HAL, LL and mixed multi-file projects
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          for mode in hal ll mixed; do
+            src="$RUNNER_TEMP/example-$mode"
+            cp -r "examples/stm32-source/$mode" "$src"
+            if [[ "$TARGET" == STM32F103* ]]; then
+              find "$src" -type f -exec sed -i 's/stm32f0xx/stm32f1xx/g' {} +
+            fi
+            (cd "$src" && zip -qr "$RUNNER_TEMP/$mode.zip" .)
+            python3 tools/universal/build.py --source "$RUNNER_TEMP/$mode.zip" --engine auto --native-target "$TARGET" --work "$RUNNER_TEMP/work-$mode" --out "$RUNNER_TEMP/output-$mode" --request-id 00000000000000000000000000000000
+            python3 -c 'import json,sys; d=json.load(open(sys.argv[1]))["build"]["drivers"]; mode=sys.argv[2]; assert d["hal"]==(mode!="ll") and d["ll"]==(mode!="hal")' "$RUNNER_TEMP/output-$mode/manifest.json" "$mode"
+            if [[ "$mode" != ll ]]; then
+              arm-none-eabi-nm "$RUNNER_TEMP/output-$mode/firmware.elf" | grep ' SysTick_Handler$'
+            fi
+          done
+  stm32-expanded:
+    if: inputs.suite == 'expanded'
+    runs-on: ubuntu-24.04
+    permissions: {contents: read}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: STM32C031C6T6, family: c0}
+          - {target: STM32G071RBT6, family: g0}
+          - {target: STM32G431CBT6, family: g4}
+          - {target: STM32F401CCU6, family: f4}
+          - {target: STM32F303CBT6, family: f3}
+          - {target: STM32F205RGT6, family: f2}
+          - {target: STM32L072CBT6, family: l0}
+          - {target: STM32L432KCU6, family: l4}
+          # Not in the 29 static recipes: exercise the live DFP resolver.
+          - {target: STM32F042F6P6, family: f0}
+          - {target: STM32F103RBT6, family: f1}
+          - {target: STM32H743ZIT6, family: h7}
+          - {target: STM32F401RBT6, family: f4}
+          - {target: STM32F746ZGT6, family: f7}
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - name: Provision ST SDK
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash tools/universal/setup-native.sh stm32-bare system "$TARGET"
+      - uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/flasher-ccache
+          key: stm32-ccache-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('tools/universal/stm32.py', 'tools/universal/setup-native.sh', 'tools/universal/stm32-sdk-checkout.sh', 'profiles/stm32-bare.json') }}
+      - name: Compile CMSIS, HAL and LL from raw source
+        env:
+          TARGET: ${{ matrix.target }}
+          FAMILY: ${{ matrix.family }}
+        run: |
+          set -euo pipefail
+          for mode in cmsis hal ll; do
+            case "$mode" in
+              cmsis) printf '#include "stm32%sxx.h"\nint main(void){for(;;)__NOP();}\n' "$FAMILY";;
+              hal) printf '#include "stm32%sxx_hal.h"\nint main(void){HAL_Init();for(;;)HAL_Delay(1);}\n' "$FAMILY";;
+              ll) printf '#include "stm32%sxx_ll_gpio.h"\nint main(void){LL_GPIO_InitTypeDef x;LL_GPIO_StructInit(&x);for(;;)__NOP();}\n' "$FAMILY";;
+            esac > "$RUNNER_TEMP/$mode.c"
+            python3 tools/universal/build.py --source "$RUNNER_TEMP/$mode.c" --engine auto --native-target "$TARGET" --work "$RUNNER_TEMP/work-$mode" --out "$RUNNER_TEMP/out-$mode" --request-id 00000000000000000000000000000000
+          done
+  stm32-middleware:
+    if: inputs.suite == 'expanded'
+    runs-on: ubuntu-24.04
+    permissions: {contents: read}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - run: bash tools/universal/setup-native.sh stm32-bare system STM32F103C8T6
+      - name: Real FreeRTOS kernel build
+        run: |
+          (cd examples/stm32-middleware/freertos && zip -qr "$RUNNER_TEMP/source.zip" .)
+          python3 tools/universal/build.py --source "$RUNNER_TEMP/source.zip" --engine auto --native-target STM32F103C8T6 --work "$RUNNER_TEMP/work" --out "$RUNNER_TEMP/out" --request-id 00000000000000000000000000000000
+          arm-none-eabi-nm "$RUNNER_TEMP/out/firmware.elf" | grep ' xTaskCreate$'
+  stm32-cubeide-import:
+    if: inputs.suite == 'expanded'
+    runs-on: ubuntu-24.04
+    permissions: {contents: read}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - run: bash tools/universal/setup-native.sh stm32cubeide-gcc system project-configured
+      - name: Compile self-contained CubeIDE metadata fixture without IDE
+        run: |
+          (cd examples/stm32-cubeide && zip -qr "$RUNNER_TEMP/source.zip" .)
+          python3 tools/universal/build.py --source "$RUNNER_TEMP/source.zip" --engine auto --work "$RUNNER_TEMP/work" --out "$RUNNER_TEMP/out" --request-id 00000000000000000000000000000000
+          test -s "$RUNNER_TEMP/out/firmware.hex"

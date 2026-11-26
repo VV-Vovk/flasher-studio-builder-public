@@ -1,0 +1,22 @@
+name: STM32 hardware catalog
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  catalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - name: Import device metadata
+        run: python3 tools/universal/stm32_catalog.py --output "$RUNNER_TEMP/catalog/stm32-catalog.json"
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: stm32-hardware-catalog
+          path: |
+            ${{ runner.temp }}/catalog/
+            ${{ runner.temp }}/stm32-dfp/
+          if-no-files-found: error
