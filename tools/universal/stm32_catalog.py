@@ -7,13 +7,13 @@ from pathlib import Path
 from functools import lru_cache
 
 # Pin the ST firmware package separately from the hardware metadata snapshot.
-CUBE_TAGS={'f7':'v1.17.3','h7':'v1.12.0'}
+CUBE_TAGS={'f7':'v1.17.3','h7':'v1.12.0','wb':'v1.24.0'}
 CATALOG_FAMILIES=('c0','f0','f1','f2','f3','f4','f7','g0','g4','h7','l0','l4','h5','u5','wb','wl','l5')
 CORES={'Cortex-M0':'cortex-m0','Cortex-M0+':'cortex-m0plus','Cortex-M3':'cortex-m3','Cortex-M4':'cortex-m4','Cortex-M7':'cortex-m7'}
 LIMIT=12*1024*1024
 
 def family_of(name):
-    m=re.fullmatch(r'STM32([A-Z][0-9])[A-Z0-9]{3,15}(?:TR)?',name.upper())
+    m=re.fullmatch(r'STM32([A-Z][0-9]|WB|WL)[A-Z0-9]{3,15}(?:TR)?',name.upper())
     if not m or m[1].lower() not in CATALOG_FAMILIES:raise ValueError('Unknown or incomplete STM32 part number: '+name)
     return m[1].lower()
 
@@ -117,7 +117,7 @@ def profile_from_row(row,family,source,digest):
     p={**processors.get('',{}),**processors.get(corekey,{})}
     cpu=CORES.get(p.get('Dcore'))
     if not cpu or p.get('Dtz') not in (None,'0','false','NO_TZ'):raise ValueError('Unsupported core or TrustZone: use full project')
-    if p.get('Dendian') not in (None,'Little-endian','LittleEndian'):raise ValueError('Unsupported CPU endianness')
+    if p.get('Dendian') not in (None,'Little-endian','LittleEndian') and not (family=='wb' and cpu=='cortex-m4' and p.get('Dendian')=='Configurable'):raise ValueError('Unsupported CPU endianness')
     c={**row['compile'].get('',{}),**row['compile'].get(corekey,{})};define=c.get('define','')
     if family=='f1':define=modern_f1_define(row['base'],define)
     if not re.fullmatch(r'STM32[A-Za-z0-9]+',define) or not define.upper().startswith('STM32'+family.upper()):raise ValueError('No unambiguous CMSIS device macro in DFP')
@@ -142,6 +142,22 @@ def profile_from_row(row,family,source,digest):
         if len(candidates)!=1:raise ValueError('No unique ordinary SRAM region for M7; use full project')
         ram=candidates[0]
     if flash['size']%1024 or ram['size']%1024:raise ValueError('Non-KiB memory region; use full project')
+    if family=='wb':
+        # The reviewed WB DFP describes CPU1 only (Cortex-M4, no named CPU2).
+        # Only known RM0434/RM0473 parts, exact DFP sizes, never radio SRAM.
+        base=row['base'].upper()
+        m=re.fullmatch(r'STM32(WB55|WB50|WB35|WB30|WB5M|WB15|WB10|WB1M)[A-Z]([CEGY])[A-Z]X[A-Z]*',base)
+        if not m or cpu!='cortex-m4' or corekey or ram['start']!=0x20000000:raise ValueError('WB requires reviewed CPU1 DFP')
+        line,d=m.groups()
+        allowed={'WB55':{'C':(256,64),'E':(512,192),'G':(1024,192),'Y':(640,192)},'WB50':{'G':(1024,64)},'WB35':{'C':(256,32),'E':(512,32)},'WB30':{'E':(512,32)},'WB5M':{'G':(1024,192)},'WB15':{'C':(320,12)},'WB10':{'C':(320,12)},'WB1M':{'C':(320,12)}}
+        pair=allowed.get(line,{}).get(d)
+        if not pair or flash['size']!=pair[0]*1024 or ram['size']<pair[1]*1024:raise ValueError('WB DFP geometry mismatch')
+        ram={**ram,'size':pair[1]*1024}
+        # DFP reports physical Flash, not the current CPU2 secure boundary.
+        # Default source-only build is small; user may set wbAppFlashKiB to
+        # their actual SFSA-derived app region. The flasher enforces live SFSA.
+        physical=flash['size']//1024
+        flash={**flash,'size':32*1024}
     # H7 dual-core and nonstandard boot configurations are not safe to infer.
     if family=='h7' and not re.match(r'STM32H7(?:23|25|30|33|35|42|43|50|53)',row['base'].upper()):raise ValueError('H7 core/boot layout requires explicit project')
     algorithms=[]
@@ -149,6 +165,7 @@ def profile_from_row(row,family,source,digest):
         if a.get('Pname','') not in ('',corekey) or not all(k in a for k in ('start','size','name')):continue
         algorithms.append({'file':a['name'],'start':integer(a['start']),'size':integer(a['size']),'default':truth(a.get('default'))})
     result={'family':family,'define':define,'cpu':cpu,'flashKiB':flash['size']//1024,'ramKiB':ram['size']//1024,'ramOrigin':ram['start'],'memoryNote':'One default internal Flash and SRAM region only; other banks need explicit linker.', 'deviceCatalog':{'device':row['name'],'base':row['base'],'source':source,'sha256':digest,'regions':memory,'flashAlgorithms':algorithms,'programmingInterfaces':'not determined'}}
+    if family=='wb':result.update({'physicalFlashKiB':physical,'wbApplicationOnly':True,'memoryNote':'CPU1 only; 32 KiB default app link limit, actual SFSA must be verified on device; no radio SRAM.'})
     fpu=fpu_flag(cpu,p.get('Dfpu'))
     if fpu:result['fpu']=fpu
     return result

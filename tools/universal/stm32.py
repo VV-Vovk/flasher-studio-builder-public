@@ -1,6 +1,6 @@
 """STM32 source-only, CubeMX and CubeIDE adapters. No ST proprietary binaries bundled."""
 import json, os, re, shutil, xml.etree.ElementTree as ET
-import stm32_middleware, stm32_git, cubeide_gcc, stm32_catalog
+import stm32_middleware, stm32_git, cubeide_gcc, stm32_catalog, wb_project
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -31,7 +31,7 @@ def driver_modes(paths,family):
     text='\n'.join(f.read_text(errors='replace') for f in paths if f.suffix in SOURCE_EXT|HEADER_EXT)
     text=re.sub(r'/\*.*?\*/|//[^\n]*','',text,flags=re.S)
     # Includes in user headers are scanned too; reject explicit other-family headers.
-    found=set(re.findall(r'(?im)^\s*#\s*include\s*[<\"][^>\"\n]*?stm32([a-z][0-9])xx(?:_[^>\"\n]*)?\.h[>\"]',text))
+    found=set(re.findall(r'(?im)^\s*#\s*include\s*[<\"][^>\"\n]*?stm32([a-z][0-9]|wb|wl)xx(?:_[^>\"\n]*)?\.h[>\"]',text))
     if found - {family}:raise ValueError('STM32 header family differs from selected MCU: '+', '.join(sorted(found)))
     hal=bool(re.search(r'(?i)stm32'+family+r'xx_hal(?:_|\.h)|\b(?:__)?HAL_[A-Za-z0-9_]+',text))
     ll=bool(re.search(r'(?i)stm32'+family+r'xx_ll_|\bLL_[A-Za-z0-9_]+',text))
@@ -93,13 +93,34 @@ def config(root,engine,target='',version=''):
         projects=[f for f in files(root,'.project') if (f.parent/'.cproject').is_file()]
         if len(projects)!=1:raise ValueError('Expected one CubeIDE .project + .cproject')
         p=projects[0].parent
-        if target and target!='project-configured':raise ValueError('CubeIDE uses MCU from its project; omit target override')
-        target='project-configured'
-        if engine=='stm32cubeide-gcc':cubeide_gcc.parse(p)
+        if engine=='stm32cubeide-gcc' and target.upper().startswith('STM32WB'):
+            target,recipe=profile(target)
+            plan=cubeide_gcc.parse(p,exact_target=target)
+            wb_project.validate_plan(plan,target,recipe)
+            wb_project.budget(source_config(p),recipe)
+        else:
+            if target and target!='project-configured':raise ValueError('CubeIDE uses MCU from its project; omit target override')
+            target='project-configured'
+            if engine=='stm32cubeide-gcc':
+                plan=cubeide_gcc.parse(p)
+                if plan['target'].startswith('STM32WB'):raise ValueError('WB requires an exact selected target and explicit application budget')
     return p,target,'system'
 
 def linker(profile):
     # ST GNU startup expects these symbols. Flash and RAM are verified per profile.
+    wb_sections = ''
+    if profile.get('wbApplicationOnly'):
+        # ST CPU1 startup expects mailbox initializer bounds even without WPAN.
+        # An empty range keeps startup from touching the radio/shared SRAM.
+        # KEEP catches actual mailbox inputs even with --gc-sections: a wireless
+        # application needs an explicit, reviewed shared-memory layout.
+        wb_sections = '''
+ _sMB_MEM2 = _ebss;
+ _eMB_MEM2 = _sMB_MEM2;
+ _siMB_MEM2 = _sidata;
+ .wb_shared_forbidden (NOLOAD) : { KEEP(*(MAPPING_TABLE MAPPING_TABLE.* .MAPPING_TABLE .MAPPING_TABLE.* MB_MEM1 MB_MEM1.* .MB_MEM1 .MB_MEM1.* MB_MEM2 MB_MEM2.* .MB_MEM2 .MB_MEM2.*)) } > RAM
+ ASSERT(SIZEOF(.wb_shared_forbidden) == 0, "WB shared radio memory requires a complete project")
+'''
     return '''ENTRY(Reset_Handler)
 MEMORY {
  FLASH (rx) : ORIGIN = 0x%08X, LENGTH = %dK
@@ -117,21 +138,22 @@ SECTIONS {
  _sidata = LOADADDR(.data);
  .data : { . = ALIGN(4); _sdata = .; *(.data*) . = ALIGN(4); _edata = .; } > RAM AT> FLASH
  .bss (NOLOAD) : { . = ALIGN(4); _sbss = .; *(.bss*) *(COMMON) . = ALIGN(4); _ebss = .; } > RAM
- . = ALIGN(8); _end = .; end = .;
+%s . = ALIGN(8); _end = .; end = .;
  ASSERT(_end + 256 <= _estack, "Insufficient RAM for minimum stack")
 }
-'''%(profile.get('flashOrigin',0x08000000),profile['flashKiB'],profile.get('ramOrigin',0x20000000),profile['ramKiB'])
+'''%(profile.get('flashOrigin',0x08000000),profile['flashKiB'],profile.get('ramOrigin',0x20000000),profile['ramKiB'],wb_sections)
 
 def driver_plan(p,work,recipe,sdk,git_sources=(),git_dirs=()):
     paths=list(dict.fromkeys(source_files(p)+list(git_sources)+[f for d in git_dirs for f in d.rglob('*') if f.is_file() and f.suffix in HEADER_EXT])); family=recipe['family']; prefix='stm32'+family+'xx'
     source=[f for f in paths if f.suffix in SOURCE_EXT]
     if any(f.name.lower().startswith(('startup_','system_stm32')) for f in source) or any(p.rglob('*.ld')):raise ValueError('Source-only mode supplies startup/system/linker; use full project for custom files')
-    if any(re.fullmatch(r'stm32[a-z][0-9]xx_(?:hal|ll)(?:_.*)?\.c',f.name.lower()) for f in source):raise ValueError('Bundled ST driver implementation: use full project rather than mixing SDK versions')
+    if any(re.fullmatch(r'stm32(?:[a-z][0-9]|wb|wl)xx_(?:hal|ll)(?:_.*)?\.c',f.name.lower()) for f in source):raise ValueError('Bundled ST driver implementation: use full project rather than mixing SDK versions')
     hal,ll=driver_modes(paths,family)
     mw=stm32_middleware.detect(paths)
+    if family=='wb' and mw:raise ValueError('WB automatic middleware provisioning disabled pending component license review; supply a complete licensed project')
     if 'usb-device' in mw:hal=True
     core=sdk/'Drivers'/'CMSIS'/'Include';device=sdk/'Drivers'/'CMSIS'/'Device'/'ST'/('STM32'+family.upper()+'xx');driver=sdk/'Drivers'/('STM32'+family.upper()+'xx_HAL_Driver');templates=device/'Source'/'Templates'
-    startup=templates/'gcc'/('startup_'+recipe['define'].lower()+'.s'); system=templates/('system_'+prefix+'.c')
+    startup=templates/'gcc'/('startup_'+recipe['define'].lower()+('_cm4.s' if family=='wb' else '.s')); system=templates/('system_'+prefix+'.c')
     if not all(x.exists() for x in (core,device/'Include',startup,system)):raise ValueError('STM32Cube CMSIS SDK missing or incompatible')
     if 'deviceCatalog' in recipe:
         header=device/'Include'/(prefix+'.h')
@@ -189,8 +211,18 @@ def recovery_system_source(work):
     p.write_text('#include "stm32f1xx.h"\nextern void FlasherOriginalSystemInit(void);\nvoid SystemInit(void) { FlasherOriginalSystemInit(); SCB->VTOR = 0x08004000UL; __DSB(); __ISB(); }\n')
     return p
 
+def wb_application_recipe(p,recipe):
+    if not recipe.get('wbApplicationOnly'):return recipe
+    value=source_config(p).get('wbAppFlashKiB',32)
+    # Caller supplies a verified application budget, never a request to
+    # disable protection. Reserve at least a page for secure radio area.
+    page=2 if recipe['physicalFlashKiB']==320 else 4
+    if type(value) is not int or value<page or value%page or value>recipe['physicalFlashKiB']-page:
+        raise ValueError('wbAppFlashKiB must be page aligned and below physical Flash; read SFSA on target')
+    return dict(recipe,flashKiB=value)
+
 def bare_build(p,work,target,run):
-    _,recipe=profile(target);sdk=Path(os.environ.get('FS_SDK_PATH','/nonexistent'))
+    _,recipe=profile(target);recipe=wb_application_recipe(p,recipe);sdk=Path(os.environ.get('FS_SDK_PATH','/nonexistent'))
     # Fetch declared Git sources outside upload tree; scan their headers for HAL/LL/MW too.
     git_sources,git_dirs,git_records=stm32_git.install(p,work)
     source,dirs,driver_flags,mode=driver_plan(p,work,recipe,sdk,git_sources,git_dirs)

@@ -81,3 +81,41 @@ class CatalogTests(unittest.TestCase):
                 recipe=cat.resolve_data(base,family,pdsc(family,body,'<processor Dcore="Cortex-M0+" Dfpu="NO_FPU"/>'),'fixture')
                 self.assertEqual(recipe['cpu'],'cortex-m0plus')
                 self.assertEqual(stm32.cpu_flags(recipe),['-mcpu=cortex-m0plus','-mthumb'])
+
+    def test_wb_cpu1_geometry_and_link_limit(self):
+        processor='<processor Dcore="Cortex-M4" Dfpu="SP_FPU" Dendian="Configurable"/>'
+        for part,flash,ram,expected in [('STM32WB55RGVx',1024,192,192),('STM32WB55VYYx',640,192,192),('STM32WB35CEUxA',512,32,32),('STM32WB5MMGHx',1024,256,192),('STM32WB15CCUx',320,12,12)]:
+            define='STM32'+part[5:9]+'xx'
+            body=device(part,define,ram=hex(ram*1024),variants='').replace('size="0x8000" startup','size="'+hex(flash*1024)+'" startup')
+            data=pdsc('wb',body,processor)
+            target=part.replace('x','6')
+            p=cat.resolve_data(target,'wb',data,'fixture')
+            self.assertEqual((p['physicalFlashKiB'],p['flashKiB'],p['ramKiB'],p['cpu']),(flash,32,expected,'cortex-m4'))
+            self.assertTrue(p['wbApplicationOnly'])
+            with tempfile.TemporaryDirectory() as d:
+                root=Path(d);self.assertEqual(stm32.wb_application_recipe(root,p)['flashKiB'],32)
+                (root/'flasher-native.json').write_text('{"wbAppFlashKiB":64}')
+                self.assertEqual(stm32.wb_application_recipe(root,p)['flashKiB'],64)
+                for bad in [flash,0,33,True]:
+                    import json
+                    (root/'flasher-native.json').write_text(json.dumps({'wbAppFlashKiB':bad}))
+                    with self.assertRaises(ValueError):stm32.wb_application_recipe(root,p)
+        self.assertEqual(cat.family_of('STM32WB55RGV6'),'wb')
+        self.assertEqual(stm32.CUBE_TAGS['wb'],'v1.24.0')
+    def test_wb_reject_wrong_geometry_or_cpu(self):
+        body=device('STM32WB55RGVx','STM32WB55xx',variants='')
+        for processor in ['<processor Dcore="Cortex-M4" Dfpu="SP_FPU" Dendian="Configurable"/>','<processor Dcore="Cortex-M0+" Dfpu="NO_FPU"/>']:
+            with self.assertRaises(ValueError):cat.resolve_data('STM32WB55RGV6','wb',pdsc('wb',body,processor),'fixture')
+
+    def test_wb_linker_empty_mailbox_only(self):
+        ordinary=stm32.linker({'flashKiB':32,'ramKiB':12})
+        wb=stm32.linker({'flashKiB':32,'ramKiB':12,'wbApplicationOnly':True})
+        self.assertNotIn('_sMB_MEM2',ordinary)
+        for fragment in ('_sMB_MEM2 = _ebss;', '_eMB_MEM2 = _sMB_MEM2;',
+                         '_siMB_MEM2 = _sidata;', 'KEEP(*(MAPPING_TABLE',
+                         'MB_MEM1 MB_MEM1.* .MB_MEM1 .MB_MEM1.*',
+                         'MB_MEM2 MB_MEM2.* .MB_MEM2 .MB_MEM2.*',
+                         'ASSERT(SIZEOF(.wb_shared_forbidden) == 0'):
+            self.assertIn(fragment,wb)
+        self.assertNotIn('RAM_SHARED',wb)
+        self.assertIn('LENGTH = 12K',wb)

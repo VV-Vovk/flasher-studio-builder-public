@@ -249,7 +249,7 @@ def main():
             build,meta=stm32.bare_build(p,x.work,target,run)
         elif engine=='stm32cubeide-gcc':
             if os.environ.get('FS_NATIVE_ENGINE')!=engine:raise ValueError('CubeIDE GNU environment not provisioned')
-            build,meta=stm32.cubeide_gcc.build(p,x.work,run)
+            build,meta=stm32.cubeide_gcc.build(p,x.work,run,exact_target=target if target.startswith('STM32WB') else '')
         else:
             from native import copy_outputs
             build,meta=stm32.proprietary_build(p,x.work,engine,target,run,copy_outputs)

@@ -261,6 +261,9 @@ jobs:
           - {target: STM32F042F6P6, family: f0}
           - {target: STM32F103RBT6, family: f1}
           - {target: STM32H743ZIT6, family: h7}
+          - {target: STM32WB55RGV6, family: wb}
+          - {target: STM32WB35CEU6A, family: wb}
+          - {target: STM32WB15CCU6, family: wb}
           - {target: STM32F401RBT6, family: f4}
           - {target: STM32F746ZGT6, family: f7}
     steps:

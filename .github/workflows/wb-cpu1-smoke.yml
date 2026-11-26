@@ -1,0 +1,60 @@
+name: WB CPU1 compiler smoke
+on:
+  push:
+    branches: [main, 'develop/**']
+    paths: ['.github/workflows/wb-cpu1-smoke.yml','tools/universal/stm32.py','tools/universal/stm32_catalog.py','tools/universal/stm32-sdk-checkout.sh']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - name: Provision pinned CMSIS and HAL
+        run: bash tools/universal/setup-native.sh stm32-bare system STM32WB55RGV6
+      - name: Compile CPU1 applications for all 23 WB catalogue templates
+        run: |
+          set -euo pipefail
+          failures=0
+          printf '## WB CPU1 real SDK builds\n\n| Device | Mode | Result |\n|---|---|---|\n' >> "$GITHUB_STEP_SUMMARY"
+          for target in STM32WB55CGU6 STM32WB55RGV6 STM32WB55VGY6 STM32WB55VGQ6 STM32WB55VYY6 STM32WB55CEU6 STM32WB55REV6 STM32WB55VEY6 STM32WB55VEQ6 STM32WB55CCU6 STM32WB55RCV6 STM32WB55VCY6 STM32WB55VCQ6 STM32WB50CGU6 STM32WB5MMGH6 STM32WB35CEU6A STM32WB35CCU6A STM32WB30CEU6A STM32WB15CCU6 STM32WB15CCU6E STM32WB15CCY6 STM32WB10CCU6 STM32WB1MMCH6; do
+            for mode in cmsis hal ll; do
+              case "$mode" in
+                cmsis) printf '#include "stm32wbxx.h"\nint main(void){for(;;)__NOP();}\n';;
+                hal) printf '#include "stm32wbxx_hal.h"\nint main(void){HAL_Init();for(;;)HAL_Delay(1);}\n';;
+                ll) printf '#include "stm32wbxx_ll_gpio.h"\nint main(void){LL_GPIO_InitTypeDef x;LL_GPIO_StructInit(&x);for(;;)__NOP();}\n';;
+              esac > "$RUNNER_TEMP/$target-$mode.c"
+              if python3 tools/universal/build.py --source "$RUNNER_TEMP/$target-$mode.c" --engine stm32-bare --native-target "$target" --work "$RUNNER_TEMP/work-$target-$mode" --out "$RUNNER_TEMP/out-$target-$mode" --request-id 00000000000000000000000000000000; then
+                echo "WB_SMOKE_PASS $target $mode"
+                printf '| %s | %s | PASS |\n' "$target" "$mode" >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "::error::WB_SMOKE_FAIL $target $mode"
+                printf '| %s | %s | FAIL |\n' "$target" "$mode" >> "$GITHUB_STEP_SUMMARY"
+                failures=$((failures+1))
+              fi
+            done
+          done
+          test "$failures" -eq 0
+      - name: Reject actual mailbox sections in CPU1-only linker
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/wb-mailbox.c" <<'EOF'
+          #include "stm32wbxx.h"
+          __attribute__((used,section("MB_MEM2"))) volatile unsigned int mailbox = 1;
+          int main(void) { for (;;) __NOP(); }
+          EOF
+          if python3 tools/universal/build.py --source "$RUNNER_TEMP/wb-mailbox.c" --engine stm32-bare --native-target STM32WB55RGV6 --work "$RUNNER_TEMP/work-mailbox" --out "$RUNNER_TEMP/out-mailbox" --request-id 00000000000000000000000000000000 > "$RUNNER_TEMP/mailbox.log" 2>&1; then
+            cat "$RUNNER_TEMP/mailbox.log"
+            echo "::error::CPU1-only linker accepted shared radio memory"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/mailbox.log"
+          grep -F 'WB shared radio memory requires a complete project' "$RUNNER_TEMP/mailbox.log"
+      - name: No automatic wireless binaries or middleware
+        if: always() && env.FS_SDK_PATH != ''
+        run: |
+          test ! -e "$FS_SDK_PATH/Middlewares/ST/STM32_WPAN"
+          test ! -e "$FS_SDK_PATH/Projects/STM32WB_Copro_Wireless_Binaries"

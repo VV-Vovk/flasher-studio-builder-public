@@ -1,0 +1,19 @@
+name: WB complete project GNU smoke
+on:
+  push:
+    branches: [main, 'develop/**']
+    paths: ['tools/universal/wb_project.py','tools/universal/cubeide_gcc.py','tools/universal/stm32.py','tests/wb_project_smoke.py','.github/workflows/wb-project-smoke.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - name: Provision GNU tools only
+        run: bash tools/universal/setup-native.sh stm32cubeide-gcc system STM32WB55RGV6
+      - name: Real GNU build and CPU1 HEX bounds
+        run: python3 tests/wb_project_smoke.py

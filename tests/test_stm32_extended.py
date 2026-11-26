@@ -14,7 +14,7 @@ class Extended(unittest.TestCase):
     def put(self,base,name,text=''):
         p=base/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text);return p
     def test_profiles_and_fpu(self):
-        self.assertEqual(len(stm32.PROFILES),42);self.assertEqual(len(stm32.CUBE_TAGS),12)
+        self.assertEqual(len(stm32.PROFILES),42);self.assertEqual(len(stm32.CUBE_TAGS),13);self.assertEqual(stm32.CUBE_TAGS['wb'],'v1.24.0')
         for target,macro,flash,ram in [["STM32F042F6P6","STM32F042x6",32,6],["STM32F042C6T6","STM32F042x6",32,6],["STM32F042K6T6","STM32F042x6",32,6],["STM32F070C6T6","STM32F070x6",32,6],["STM32F070CBT6","STM32F070xB",128,16],["STM32F070RBT6","STM32F070xB",128,16],["STM32F072RBT6","STM32F072xB",128,16],["STM32F072CBT6","STM32F072xB",128,16],["STM32F103R8T6","STM32F103xB",64,20],["STM32F103RBT6","STM32F103xB",128,20],["STM32F103V8T6","STM32F103xB",64,20],["STM32F103VBT6","STM32F103xB",128,20]]:
             name,p=stm32.profile(target)
             self.assertEqual(name,target)
@@ -69,3 +69,29 @@ class Extended(unittest.TestCase):
         recipe=stm32.profile('STM32G071RBT6')[1]
         _,_,_,meta=mw.plan([p,c],self.sdk,recipe,{}, {'freertos'})
         self.assertEqual(meta['freertos']['port'],'ARM_CM0')
+
+    def test_wb_cpu1_startup_selection(self):
+        main=self.put(self.p,'main.c','#include "stm32wbxx.h"\nint main(void){for(;;)__NOP();}')
+        base='Drivers/CMSIS/Device/ST/STM32WBxx/'
+        self.put(self.sdk,'Drivers/CMSIS/Include/core_cm4.h')
+        self.put(self.sdk,base+'Include/stm32wbxx.h')
+        system=self.put(self.sdk,base+'Source/Templates/system_stm32wbxx.c')
+        for line in ('10','15','1M','30','35','50','55','5M'):
+            with self.subTest(line=line):
+                define='STM32WB'+line+'xx'
+                recipe={'family':'wb','define':define}
+                startup=self.put(self.sdk,base+'Source/Templates/gcc/startup_'+define.lower()+'_cm4.s')
+                wrong=self.put(self.sdk,base+'Source/Templates/gcc/startup_'+define.lower()+'.s')
+                src,dirs,flags,meta=stm32.driver_plan(self.p,self.work,recipe,self.sdk)
+                self.assertEqual(src,[main,startup,system])
+                self.assertNotIn(wrong,src)
+                self.assertFalse(meta['hal'])
+                self.assertFalse(meta['ll'])
+                startup.unlink()
+                with self.assertRaisesRegex(ValueError,'CMSIS SDK missing or incompatible'):
+                    stm32.driver_plan(self.p,self.work,recipe,self.sdk)
+
+    def test_wb_unreviewed_middleware_rejected_before_sdk_use(self):
+        self.put(self.p,'main.c','#include "FreeRTOS.h"')
+        with self.assertRaisesRegex(ValueError,'WB automatic middleware provisioning disabled'):
+            stm32.driver_plan(self.p,self.work,{'family':'wb','define':'STM32WB55xx'},self.sdk)

@@ -38,7 +38,7 @@ def candidate(p):
     try:choose(p);return True
     except (OSError,ValueError,ET.ParseError):return False
 
-def parse(p):
+def parse(p,exact_target=''):
     desc=parse_xml(p/'.project');name=desc.findtext('name','')
     if not re.fullmatch(r'[A-Za-z0-9_. -]{1,100}',name):raise ValueError('Invalid CubeIDE project name')
     if desc.find('linkedResources') is not None and list(desc.find('linkedResources')):raise ValueError('CubeIDE linked resources need a complete portable Make/CMake export')
@@ -64,7 +64,7 @@ def parse(p):
     # Fallback to an exact known MCU profile, not family-based guesses.
     if target:
         import stm32
-        try:recipe=stm32.profile(target[:-2] if target.endswith('X') and len(target)>11 else target)[1]
+        try:recipe=stm32.profile(exact_target or (target[:-2] if target.endswith('X') and len(target)>11 else target))[1]
         except ValueError:recipe=None
         if recipe:
             if cpu and cpu!=recipe['cpu']:raise ValueError('CubeIDE MCU/CPU mismatch')
@@ -128,8 +128,14 @@ def parse(p):
     if len(lk['ld'])!=1:raise ValueError('Expected exactly one CubeIDE linker script')
     return {'target':target or 'project-configured','configuration':cfg.get('name'),'arch':arch,'tools':tools,'sources':sorted(sources),'cpp':cpp,'linker':lk}
 
-def build(p,work,run):
-    plan=parse(p);objdir=work/'cubeide-objects';objdir.mkdir();out=work/'native-output';out.mkdir();objects=[]
+def build(p,work,run,exact_target=''):
+    plan=parse(p,exact_target=exact_target)
+    if exact_target:
+        import stm32,wb_project
+        _,recipe=stm32.profile(exact_target)
+        wb_project.validate_plan(plan,exact_target,recipe)
+        limit=wb_project.budget(stm32.source_config(p),recipe)
+    objdir=work/'cubeide-objects';objdir.mkdir();out=work/'native-output';out.mkdir();objects=[]
     for n,f in enumerate(plan['sources']):
         kind='compiler.cpp' if f.suffix in ('.cpp','.cc','.cxx') else 'assembler' if f.suffix in ('.s','.S') else 'compiler.c'
         t=plan['tools'].get(kind)
@@ -140,4 +146,8 @@ def build(p,work,run):
     lk=plan['linker'];elf=out/'firmware.elf'
     run('arm-none-eabi-g++' if plan['cpp'] else 'arm-none-eabi-gcc',*plan['arch'],'-T',lk['ld'][0],*lk['flags'],'--specs=nano.specs','--specs=nosys.specs','-Wl,--gc-sections','-Wl,-Map='+str(out/'firmware.map'),*objects,*['-L'+str(x) for x in lk['libdirs']],'-Wl,--start-group',*['-l'+x for x in lk['libs']],'-lc','-lm','-Wl,--end-group','-o',elf,cwd=p)
     run('arm-none-eabi-objcopy','-O','ihex',elf,out/'firmware.hex');run('arm-none-eabi-objcopy','-O','binary',elf,out/'firmware.bin')
-    return out,{'engine':ENGINE,'target':plan['target'],'configuration':plan['configuration'],'sdkVersion':'system','toolchain':run('arm-none-eabi-gcc','--version',capture=True).splitlines()[0],'note':'Standard CubeIDE GNU import; generated source and project settings required'}
+    meta={'engine':ENGINE,'target':plan['target'],'configuration':plan['configuration'],'sdkVersion':'system','toolchain':run('arm-none-eabi-gcc','--version',capture=True).splitlines()[0],'note':'Standard CubeIDE GNU import; generated source and project settings required'}
+    if exact_target:
+        ranges=wb_project.verify_output(out,recipe,limit)
+        meta.update(target=exact_target,memory=dict(recipe,flashKiB=limit),wbFullProject=True,wbFlashRanges=ranges,wbRadioStack='user-supplied; compatibility not verified')
+    return out,meta
