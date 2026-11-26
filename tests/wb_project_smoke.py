@@ -28,9 +28,15 @@ SECTIONS {
  .mailbox (NOLOAD) : { KEEP(*(MB_MEM2)) } > SHARED
 }
 """)
-    for mode in ('valid','outside-budget'):
-        if mode!='valid':
-            (p/'flash.ld').write_text((p/'flash.ld').read_text().replace('0x08000000','0x08010000'))
+    original=(p/'flash.ld').read_text()
+    for mode in ('valid','outside-budget','outside-ram','initialized-shared'):
+        script=original
+        if mode=='outside-budget':script=script.replace('0x08000000','0x08010000')
+        if mode=='outside-ram':script=script.replace('0x20030000, LENGTH = 1K','0x20040000, LENGTH = 1K')
+        if mode=='initialized-shared':script=script.replace('.mailbox (NOLOAD)', '.mailbox').replace('} > SHARED','} > SHARED AT> FLASH')
+        (p/'flash.ld').write_text(script)
+        if mode=='initialized-shared':
+            f=p/'Core/Src/main.c';f.write_text(f.read_text().replace('mailbox;','mailbox=7;'))
         archive=root/(mode+'.zip')
         with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
             for x in p.rglob('*'):
@@ -42,7 +48,10 @@ SECTIONS {
             run.check_returncode()
             m=json.loads((out/'manifest.json').read_text())['build']
             assert m['wbFullProject'] is True and m['memory']['flashKiB']==32 and m['wbFlashRanges'][0]['start']==0x08000000
-            print('WB_FULL_PROJECT_PASS custom shared RAM NOLOAD and CPU1 HEX')
+            audit=m['wbMemoryAudit'];assert audit['layout']=='wb55-sram192-rm0434'
+            assert any(s['area']=='sram2a' and s['loadStart'] is None for s in audit['sections'])
+            print('WB_FULL_PROJECT_PASS custom shared RAM NOLOAD and CPU1 HEX + ELF audit')
         else:
-            assert run.returncode and 'WB HEX must contain only CPU1' in run.stdout
-            print('WB_FULL_PROJECT_REJECT out-of-budget image')
+            expected={'outside-budget':'WB HEX must contain only CPU1','outside-ram':'WB ELF allocation outside','initialized-shared':'WB shared SRAM requires'}[mode]
+            assert run.returncode and expected in run.stdout,run.stdout
+            print('WB_FULL_PROJECT_REJECT '+mode)

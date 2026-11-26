@@ -149,5 +149,7 @@ def build(p,work,run,exact_target=''):
     meta={'engine':ENGINE,'target':plan['target'],'configuration':plan['configuration'],'sdkVersion':'system','toolchain':run('arm-none-eabi-gcc','--version',capture=True).splitlines()[0],'note':'Standard CubeIDE GNU import; generated source and project settings required'}
     if exact_target:
         ranges=wb_project.verify_output(out,recipe,limit)
-        meta.update(target=exact_target,memory=dict(recipe,flashKiB=limit),wbFullProject=True,wbFlashRanges=ranges,wbRadioStack='user-supplied; compatibility not verified')
+        import wb_elf
+        memory_audit=wb_elf.audit(elf,recipe,limit)
+        meta.update(target=exact_target,memory=dict(recipe,flashKiB=limit),wbFullProject=True,wbFlashRanges=ranges,wbRadioStack='user-supplied; compatibility not verified',wbMemoryAudit=memory_audit)
     return out,meta

@@ -7,3 +7,7 @@ Upstream: https://github.com/STMicroelectronics/STM32CubeWB/blob/v1.24.0/LICENSE
 ## Self-contained CubeIDE WB preview
 
 Use an exact reviewed STM32WB target and complete, portable GNU CubeIDE ZIP. User supplies legally obtained middleware, startup, linker script, and source; no download of restricted components. Include flasher-native.json at project root with explicit wbAppFlashKiB from live SFSA. The build preserves project linker and checks resulting HEX is CPU1 Flash only and has valid vectors. Radio stack/FUS compatibility, shared RAM layout and BLE operation are not independently validated; this is compilation preview, not automatic radio flashing. No licenses accepted on user's behalf.
+
+## Static ELF allocation audit
+
+Original audit code, not copied from vendor firmware. On WB55 variants with 192 KiB SRAM1, validate ARM ELF32 load segments and allocated sections against RM0434 and AN5289: application Flash, SRAM1, SRAM2a/b. Shared SRAM must be NOLOAD and non-executable. Other geometries retain compile-only preview. Static ELF checks cannot establish runtime stack compatibility or a complete memory-use proof. No WPAN/FUS redistribution or automatic license acceptance. Public tests use original synthetic C/linker inputs; no linked firmware artifacts published.

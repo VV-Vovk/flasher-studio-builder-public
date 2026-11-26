@@ -2,7 +2,7 @@ name: WB complete project GNU smoke
 on:
   push:
     branches: [main, 'develop/**']
-    paths: ['tools/universal/wb_project.py','tools/universal/cubeide_gcc.py','tools/universal/stm32.py','tests/wb_project_smoke.py','.github/workflows/wb-project-smoke.yml']
+    paths: ['tools/universal/wb_elf.py','tools/universal/wb_project.py','tools/universal/cubeide_gcc.py','tools/universal/stm32.py','tests/wb_project_smoke.py','.github/workflows/wb-project-smoke.yml']
   workflow_dispatch:
 permissions:
   contents: read
