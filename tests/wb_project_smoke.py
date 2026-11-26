@@ -31,9 +31,12 @@ SECTIONS {
 }
 """)
     original=(p/'flash.ld').read_text()
+    original_cproject=(p/'.cproject').read_text()
     source=(p/'Core/Src/main.c').read_text()
-    for mode in ('valid','outside-budget','outside-ram','initialized-shared','ota','ota-bad-marker','ota-reserved-ram'):
+    for mode in ('valid','outside-budget','outside-ram','initialized-shared','ota','ota-bad-marker','ota-reserved-ram','wb55-64','wb35-32','wb50-64','wb30-32','wb35-ram-gap'):
         (p/'Core/Src/main.c').write_text(source)
+        (p/'.cproject').write_text(original_cproject)
+        target='STM32WB55RGV6'
         (p/'flasher-native.json').write_text(json.dumps({'wbAppFlashKiB':32}))
         script=original
         if mode=='outside-budget':script=script.replace('0x08000000','0x08010000')
@@ -47,6 +50,12 @@ SECTIONS {
             if mode=='ota-bad-marker':script=script.replace('0x94448a29','0x0')
             if mode=='ota-reserved-ram':
                 script=script.replace('0x20000004, LENGTH = 196604','0x20000000, LENGTH = 192K').replace(' MAPPING_TABLE',' .bad (NOLOAD) : { LONG(0); } > RAM\n MAPPING_TABLE',1)
+        if mode.startswith('wb'):
+            target,macro,ram={'wb55-64':('STM32WB55CCU6','STM32WB55xx',64),'wb35-32':('STM32WB35CEU6A','STM32WB35xx',32),'wb50-64':('STM32WB50CGU6','STM32WB50xx',64),'wb30-32':('STM32WB30CEU6A','STM32WB30xx',32),'wb35-ram-gap':('STM32WB35CEU6A','STM32WB35xx',32)}[mode]
+            (p/'.cproject').write_text(original_cproject.replace('STM32WB55RGVx',target).replace('STM32WB55xx',macro))
+            (p/'Core/Src/main.c').write_text(source.replace('0x20030000,','0x%08x,'%(0x20000000+ram*1024)))
+            script=script.replace('LENGTH = 192K','LENGTH = %dK'%ram)
+            if mode=='wb35-ram-gap':script=script.replace(' MAPPING_TABLE',' .bad 0x20008000 (NOLOAD) : { LONG(0); }\n MAPPING_TABLE',1)
         (p/'flash.ld').write_text(script)
         if mode=='initialized-shared':
             f=p/'Core/Src/main.c';f.write_text(f.read_text().replace('mailbox;','mailbox=7;'))
@@ -55,7 +64,7 @@ SECTIONS {
             for x in p.rglob('*'):
                 if x.is_file():z.write(x,x.relative_to(p))
         out=root/('out-'+mode)
-        cmd=[sys.executable,str(ROOT/'tools/universal/build.py'),'--source',str(archive),'--engine','stm32cubeide-gcc','--native-target','STM32WB55RGV6','--work',str(root/('work-'+mode)),'--out',str(out),'--request-id','0'*32]
+        cmd=[sys.executable,str(ROOT/'tools/universal/build.py'),'--source',str(archive),'--engine','stm32cubeide-gcc','--native-target',target,'--work',str(root/('work-'+mode)),'--out',str(out),'--request-id','0'*32]
         run=subprocess.run(cmd,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT);print(run.stdout)
         if mode=='valid':
             run.check_returncode()
@@ -66,6 +75,13 @@ SECTIONS {
             if os.environ.get('FS_WB_WEB_AUDIT'):
                 subprocess.run(['node',str(ROOT/'tests/wb_web_contract.mjs'),str(out),os.environ['FS_WB_WEB_AUDIT']],check=True)
             print('WB_FULL_PROJECT_PASS custom shared RAM NOLOAD and CPU1 HEX + ELF audit')
+        elif mode.startswith('wb') and mode!='wb35-ram-gap':
+            run.check_returncode()
+            m=json.loads((out/'manifest.json').read_text())['build']
+            assert m['wbMemoryAudit']['layout']=='wb3x5x-sram%d-an5451'%ram
+            if os.environ.get('FS_WB_WEB_AUDIT'):
+                subprocess.run(['node',str(ROOT/'tests/wb_web_contract.mjs'),str(out),os.environ['FS_WB_WEB_AUDIT']],check=True)
+            print('WB_GEOMETRY_PASS '+target)
         elif mode=='ota':
             run.check_returncode()
             m=json.loads((out/'manifest.json').read_text())['build']
@@ -76,6 +92,6 @@ SECTIONS {
                 subprocess.run(['node',str(ROOT/'tests/wb_web_contract.mjs'),str(out),os.environ['FS_WB_WEB_AUDIT']],check=True)
             print('WB_OTA_PROJECT_PASS relocated application and end marker')
         else:
-            expected={'ota-bad-marker':'WB OTA end marker invalid','ota-reserved-ram':'WB ELF allocation outside','outside-budget':'WB HEX must contain only CPU1','outside-ram':'WB ELF allocation outside','initialized-shared':'WB shared SRAM requires'}[mode]
+            expected={'wb35-ram-gap':'WB ELF allocation outside','ota-bad-marker':'WB OTA end marker invalid','ota-reserved-ram':'WB ELF allocation outside','outside-budget':'WB HEX must contain only CPU1','outside-ram':'WB ELF allocation outside','initialized-shared':'WB shared SRAM requires'}[mode]
             assert run.returncode and expected in run.stdout,run.stdout
             print('WB_FULL_PROJECT_REJECT '+mode)

@@ -19,3 +19,7 @@ Reviewed exact upstream v1.24.0 LICENSE.md (Git blob c8ae886e79d0eca1e5f23df0fe5
 ## OTA application build preview
 
 AN5247 Rev 8 documents the relocated user application; `wbOtaLayout: st-ble-app-0x7000` is an explicit opt-in for reviewed WB55 192 KiB SRAM1. Checks the addressed image, reserves the first SRAM1 word, validates the end marker and preserves the bootloader by not generating a full-image write. Original synthetic test sources only, no vendor OTA code, FUS, middleware, or binary distribution. Runtime OTA/radio compatibility still requires hardware validation. Source for protocol constants: ST AN5247 and upstream BLE HeartRate example (reference only, not copied).
+
+## Expanded SRAM audit (AN5451 rev 5, table 7)
+
+WB55 64/192 KiB, WB35/30 32 KiB and WB50 64 KiB SRAM1: independent SRAM1 limit and fixed SRAM2a/b mappings. The intervening address hole is invalid. WB1x shared layout remains on hold. Synthetic tests only; no new vendor code or firmware. OTA relocation remains restricted to WB55 192 KiB pending separate review.

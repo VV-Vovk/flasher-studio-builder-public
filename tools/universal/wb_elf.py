@@ -1,4 +1,4 @@
-"""Bounded ELF32 ARM allocation audit. Only reviewed WB55 192 KiB SRAM1 layout.
+"""Bounded ELF32 ARM allocation audit. Reviewed WB3x/5x SRAM layout; see AN5451 table 7.
 RM0434 and AN5289: SRAM2a/b are shared and have live CPU2 security boundaries.
 No code is executed; the result is a static allocation report, not a radio ABI proof.
 """
@@ -11,12 +11,14 @@ B=0x20038000
 END=0x20040000
 
 def supported(recipe):
-    return recipe.get('define')=='STM32WB55xx' and recipe.get('ramKiB')==192
+    return (recipe.get('define'),recipe.get('ramKiB')) in {('STM32WB55xx',64),('STM32WB55xx',192),('STM32WB50xx',64),('STM32WB35xx',32),('STM32WB30xx',32)}
 
 def audit(path,recipe,limit,origin=BASE):
     if not supported(recipe):return None
     if origin not in (BASE,0x08007000):raise ValueError('WB unknown application origin')
     ram_start=RAM+4 if origin!=BASE else RAM
+    ram_end=RAM+recipe['ramKiB']*1024
+    if origin!=BASE and recipe['ramKiB']!=192:raise ValueError('WB OTA geometry not reviewed')
     data=Path(path).read_bytes()
     if not 52<=len(data)<=32*1024*1024 or data[:7]!=b'\x7fELF\x01\x01\x01':
         raise ValueError('WB ELF must be little-endian ELF32')
@@ -25,7 +27,7 @@ def audit(path,recipe,limit,origin=BASE):
         raise ValueError('WB invalid executable ELF tables')
     ceiling=BASE+limit*1024
     def region(start,end):
-        for label,lo,hi in [('flash',origin,ceiling),('sram1',ram_start,A),('sram2a',A,B),('sram2b',B,END)]:
+        for label,lo,hi in [('flash',origin,ceiling),('sram1',ram_start,ram_end),('sram2a',A,B),('sram2b',B,END)]:
             if lo<=start<end<=hi:return label
         raise ValueError('WB ELF allocation outside reviewed CPU1 memory')
     loads=[]
@@ -63,4 +65,4 @@ def audit(path,recipe,limit,origin=BASE):
     result.sort(key=lambda x:x['start'])
     if not result or any(a['endExclusive']>b['start'] for a,b in zip(result,result[1:])):raise ValueError('WB overlapping allocated sections')
     if not any(x['area']=='flash' and x['start']<=entry&~1<x['endExclusive'] for x in result):raise ValueError('WB ELF entry outside application')
-    return {'schema':1,'layout':'wb55-sram192-rm0434','sections':result}
+    return {'schema':1,'layout':('wb55-sram192-rm0434' if recipe['ramKiB']==192 else 'wb3x5x-sram%d-an5451'%recipe['ramKiB']),'sections':result}
