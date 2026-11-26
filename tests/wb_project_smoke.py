@@ -51,7 +51,7 @@ SECTIONS {
             if mode=='ota-reserved-ram':
                 script=script.replace('0x20000004, LENGTH = 196604','0x20000000, LENGTH = 192K').replace(' MAPPING_TABLE',' .bad (NOLOAD) : { LONG(0); } > RAM\n MAPPING_TABLE',1)
         if mode.startswith('wb'):
-            target,macro,ram={'wb55-64':('STM32WB55CCU6','STM32WB55xx',64),'wb35-32':('STM32WB35CEU6A','STM32WB35xx',32),'wb50-64':('STM32WB50CGU6','STM32WB50xx',64),'wb30-32':('STM32WB30CEU6A','STM32WB30xx',32),'wb35-ram-gap':('STM32WB35CEU6A','STM32WB35xx',32),'wb15-12':('STM32WB15CCU6','STM32WB15xx',12),'wb10-12':('STM32WB10CCU6','STM32WB10xx',12),'wb1m-12':('STM32WB1MMCH6','STM32WB15xx',12),'wb5m-192':('STM32WB5MMGH6','STM32WB55xx',192),'wb15-sram2b-overflow':('STM32WB15CCU6','STM32WB15xx',12)}[mode]
+            target,macro,ram={'wb55-64':('STM32WB55CCU6','STM32WB55xx',64),'wb35-32':('STM32WB35CEU6A','STM32WB35xx',32),'wb50-64':('STM32WB50CGU6','STM32WB50xx',64),'wb30-32':('STM32WB30CEU6A','STM32WB30xx',32),'wb35-ram-gap':('STM32WB35CEU6A','STM32WB35xx',32),'wb15-12':('STM32WB15CCU6','STM32WB15xx',12),'wb10-12':('STM32WB10CCU6','STM32WB10xx',12),'wb1m-12':('STM32WB1MMCH6','STM32WB1Mxx',12),'wb5m-192':('STM32WB5MMGH6','STM32WB5Mxx',192),'wb15-sram2b-overflow':('STM32WB15CCU6','STM32WB15xx',12)}[mode]
             (p/'.cproject').write_text(original_cproject.replace('STM32WB55RGVx',target).replace('STM32WB55xx',macro))
             (p/'Core/Src/main.c').write_text(source.replace('0x20030000,','0x%08x,'%(0x20000000+ram*1024)))
             script=script.replace('LENGTH = 192K','LENGTH = %dK'%ram)

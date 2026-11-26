@@ -11,7 +11,7 @@ B=0x20038000
 END=0x20040000
 
 def supported(recipe):
-    return (recipe.get('define'),recipe.get('ramKiB')) in {('STM32WB55xx',64),('STM32WB55xx',192),('STM32WB50xx',64),('STM32WB35xx',32),('STM32WB30xx',32),('STM32WB15xx',12),('STM32WB10xx',12)}
+    return (recipe.get('define'),recipe.get('ramKiB')) in {('STM32WB55xx',64),('STM32WB55xx',192),('STM32WB50xx',64),('STM32WB35xx',32),('STM32WB30xx',32),('STM32WB15xx',12),('STM32WB10xx',12),('STM32WB1Mxx',12),('STM32WB5Mxx',192)}
 
 def audit(path,recipe,limit,origin=BASE):
     if not supported(recipe):return None
