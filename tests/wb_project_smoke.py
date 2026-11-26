@@ -52,6 +52,8 @@ SECTIONS {
             assert m['wbFullProject'] is True and m['memory']['flashKiB']==32 and m['wbFlashRanges'][0]['start']==0x08000000
             audit=m['wbMemoryAudit'];assert audit['layout']=='wb55-sram192-rm0434'
             assert any(s['area']=='sram2a' and s['loadStart'] is None and s['name']=='MAPPING_TABLE' and s['start']==0x20030000 for s in audit['sections'])
+            if os.environ.get('FS_WB_WEB_AUDIT'):
+                subprocess.run(['node',str(ROOT/'tests/wb_web_contract.mjs'),str(out),os.environ['FS_WB_WEB_AUDIT']],check=True)
             print('WB_FULL_PROJECT_PASS custom shared RAM NOLOAD and CPU1 HEX + ELF audit')
         else:
             expected={'outside-budget':'WB HEX must contain only CPU1','outside-ram':'WB ELF allocation outside','initialized-shared':'WB shared SRAM requires'}[mode]

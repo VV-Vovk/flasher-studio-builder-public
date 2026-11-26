@@ -2,7 +2,7 @@ name: WB complete project GNU smoke
 on:
   push:
     branches: [main, 'develop/**']
-    paths: ['tools/universal/wb_elf.py','tools/universal/wb_project.py','tools/universal/cubeide_gcc.py','tools/universal/stm32.py','tests/wb_project_smoke.py','.github/workflows/wb-project-smoke.yml']
+    paths: ['tools/universal/wb_elf.py','tools/universal/wb_project.py','tools/universal/cubeide_gcc.py','tools/universal/stm32.py','tests/wb_project_smoke.py','tests/wb_web_contract.mjs','.github/workflows/wb-project-smoke.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -15,5 +15,17 @@ jobs:
         with: {persist-credentials: false}
       - name: Provision GNU tools only
         run: bash tools/universal/setup-native.sh stm32cubeide-gcc system STM32WB55RGV6
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Fetch pinned public Web audit
+        env:
+          WEB_REF: 2c040597752cbe4655967b91748fb7e9953ca1da
+        run: |
+          set -euo pipefail
+          git init "$RUNNER_TEMP/web"
+          git -C "$RUNNER_TEMP/web" fetch --no-tags --depth=1 https://github.com/VV-Vovk/flasher-studio-web.git "$WEB_REF"
+          git -C "$RUNNER_TEMP/web" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/web" rev-parse HEAD)" = "$WEB_REF"
+          echo "FS_WB_WEB_AUDIT=$RUNNER_TEMP/web/public" >> "$GITHUB_ENV"
       - name: Real GNU build and CPU1 HEX bounds
         run: python3 tests/wb_project_smoke.py
