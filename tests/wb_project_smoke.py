@@ -11,8 +11,9 @@ with tempfile.TemporaryDirectory() as td:
     (p/'flasher-native.json').write_text(json.dumps({'wbAppFlashKiB':32}))
     (p/'Core/Src/main.c').write_text("""
 #include <stdint.h>
+__attribute__((section("MAPPING_TABLE"),used)) volatile uint32_t table[8];
 __attribute__((section("MB_MEM2"),used)) volatile uint32_t mailbox;
-void Reset_Handler(void){mailbox=42;for(;;){}}
+void Reset_Handler(void){table[0]=42;mailbox=42;for(;;){}}
 __attribute__((section(".isr_vector"),used)) const uintptr_t vectors[]={0x20030000,(uintptr_t)Reset_Handler};
 """)
     (p/'flash.ld').write_text("""
@@ -25,6 +26,7 @@ MEMORY {
 SECTIONS {
  .isr_vector : { KEEP(*(.isr_vector)) } > FLASH
  .text : { *(.text*) *(.rodata*) } > FLASH
+ MAPPING_TABLE (NOLOAD) : { KEEP(*(MAPPING_TABLE)) } > SHARED
  .mailbox (NOLOAD) : { KEEP(*(MB_MEM2)) } > SHARED
 }
 """)
@@ -49,7 +51,7 @@ SECTIONS {
             m=json.loads((out/'manifest.json').read_text())['build']
             assert m['wbFullProject'] is True and m['memory']['flashKiB']==32 and m['wbFlashRanges'][0]['start']==0x08000000
             audit=m['wbMemoryAudit'];assert audit['layout']=='wb55-sram192-rm0434'
-            assert any(s['area']=='sram2a' and s['loadStart'] is None for s in audit['sections'])
+            assert any(s['area']=='sram2a' and s['loadStart'] is None and s['name']=='MAPPING_TABLE' and s['start']==0x20030000 for s in audit['sections'])
             print('WB_FULL_PROJECT_PASS custom shared RAM NOLOAD and CPU1 HEX + ELF audit')
         else:
             expected={'outside-budget':'WB HEX must contain only CPU1','outside-ram':'WB ELF allocation outside','initialized-shared':'WB shared SRAM requires'}[mode]

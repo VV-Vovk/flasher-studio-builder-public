@@ -11,3 +11,7 @@ Use an exact reviewed STM32WB target and complete, portable GNU CubeIDE ZIP. Use
 ## Static ELF allocation audit
 
 Original audit code, not copied from vendor firmware. On WB55 variants with 192 KiB SRAM1, validate ARM ELF32 load segments and allocated sections against RM0434 and AN5289: application Flash, SRAM1, SRAM2a/b. Shared SRAM must be NOLOAD and non-executable. Other geometries retain compile-only preview. Static ELF checks cannot establish runtime stack compatibility or a complete memory-use proof. No WPAN/FUS redistribution or automatic license acceptance. Public tests use original synthetic C/linker inputs; no linked firmware artifacts published.
+
+## License gate, 2026-11-26
+
+Reviewed exact upstream v1.24.0 LICENSE.md (Git blob c8ae886e79d0eca1e5f23df0fe5a49e42192edb5), tag resolves to 7c5aa7dcd2c0abe787f922bb06a6213c724d08e4. CMSIS and CMSIS Device Apache-2.0, STM32WB HAL BSD-3-Clause; STM32_WPAN and STM32_USB_Device_Library SLA0044, STM32 Audio PDM SLA0047, STM32 Projects SLA0044. Source-only checkout fails closed on changed tag/commit or license blob. Public CI accepts original source/test fixtures, not restricted vendor source, compiled images or private requests. No blanket redistribution clearance for linked firmware. Other vendors/SDK releases require separate component-level review before adding or distributing dependencies. The automated checks are guardrails, not a legal opinion.
