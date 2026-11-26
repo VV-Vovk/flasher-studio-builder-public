@@ -19,7 +19,7 @@ jobs:
         with: {node-version: '22'}
       - name: Fetch pinned public Web audit
         env:
-          WEB_REF: 2c040597752cbe4655967b91748fb7e9953ca1da
+          WEB_REF: 7e6d3fdc32f5b498352b3877f1f161cfbc3f1167
         run: |
           set -euo pipefail
           git init "$RUNNER_TEMP/web"

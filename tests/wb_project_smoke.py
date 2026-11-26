@@ -72,6 +72,8 @@ SECTIONS {
             assert m['wbOtaOrigin']==0x08007000 and m['wbOtaLayout']=='st-ble-app-0x7000'
             assert m['wbFlashRanges'][0]['start']==0x08007000
             b=(out/'firmware.bin').read_bytes();assert int.from_bytes(b[-4:],'little')==0x94448a29
+            if os.environ.get('FS_WB_WEB_AUDIT'):
+                subprocess.run(['node',str(ROOT/'tests/wb_web_contract.mjs'),str(out),os.environ['FS_WB_WEB_AUDIT']],check=True)
             print('WB_OTA_PROJECT_PASS relocated application and end marker')
         else:
             expected={'ota-bad-marker':'WB OTA end marker invalid','ota-reserved-ram':'WB ELF allocation outside','outside-budget':'WB HEX must contain only CPU1','outside-ram':'WB ELF allocation outside','initialized-shared':'WB shared SRAM requires'}[mode]
