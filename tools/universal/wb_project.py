@@ -3,6 +3,9 @@ import re, struct
 from pathlib import Path
 import flash_layout
 BASE=0x08000000
+OTA_BASE=0x08007000
+OTA_LAYOUT='st-ble-app-0x7000'
+OTA_MAGIC=0x94448A29
 
 def match_target(declared,selected):
     # CubeIDE commonly uses a temperature wildcard in the part code.
@@ -26,15 +29,24 @@ def budget(config,recipe):
     n=config['wbAppFlashKiB'];physical=recipe['physicalFlashKiB'];page=2 if physical==320 else 4
     if type(n) is not int or n<page or n%page or n>=physical:
         raise ValueError('WB application budget must be page aligned and below physical Flash')
+    origin(config,recipe,n)
     return n
 
-def verify_output(out,recipe,limit):
+def origin(config,recipe,limit):
+    layout=config.get('wbOtaLayout')
+    if layout is None:return BASE
+    if layout!=OTA_LAYOUT or recipe.get('define')!='STM32WB55xx' or recipe.get('ramKiB')!=192 or limit<=28:
+        raise ValueError('WB OTA requires reviewed WB55 192 KiB SRAM1 and Flash budget above 28 KiB')
+    return OTA_BASE
+
+def verify_output(out,recipe,limit,origin=BASE):
     ranges=flash_layout.ihex(out/'firmware.hex')
     ceiling=BASE+limit*1024
-    if ranges[0]['start']!=BASE or any(not BASE<=x['start']<x['endExclusive']<=ceiling for x in ranges):
+    if origin not in (BASE,OTA_BASE) or ranges[0]['start']!=origin or any(not origin<=x['start']<x['endExclusive']<=ceiling for x in ranges):
         raise ValueError('WB HEX must contain only CPU1 application Flash within declared budget')
     # Read actual vector bytes from address-bearing HEX, not an unaddressed BIN.
     vectors={}
+    image=bytearray(b'\xff')*(ranges[-1]['endExclusive']-origin) if origin==OTA_BASE else None
     base=0
     for line in (out/'firmware.hex').read_text('ascii').splitlines():
         if not line.strip():continue
@@ -42,10 +54,20 @@ def verify_output(out,recipe,limit):
         if typ in (2,4):base=int.from_bytes(data,'big')<<(4 if typ==2 else 16)
         elif typ==0:
             for i,b in enumerate(data):
-                if BASE<=base+addr+i<BASE+8:vectors[base+addr+i]=b
+                a=base+addr+i
+                if origin<=a<origin+8:vectors[a]=b
+                if image is not None:image[a-origin]=b
     if len(vectors)!=8:raise ValueError('WB missing CPU1 vector table')
-    sp,pc=struct.unpack('<II',bytes(vectors[BASE+i] for i in range(8)))
+    sp,pc=struct.unpack('<II',bytes(vectors[origin+i] for i in range(8)))
     ram=recipe.get('ramOrigin',0x20000000)
     if sp%8 or not ram<sp<=ram+recipe['ramKiB']*1024 or not pc&1 or not any(x['start']<=(pc&~1)<x['endExclusive'] for x in ranges):
         raise ValueError('WB invalid CPU1 stack or reset vector')
+    if image is not None:
+        covered=lambda a,n:any(x['start']<=a and a+n<=x['endExclusive'] for x in ranges)
+        if len(image)<0x148 or sp<=ram+4 or not covered(pc&~1,2) or not covered(origin+0x140,4):raise ValueError('WB OTA vector or tag pointer invalid')
+        tag=struct.unpack_from('<I',image,0x140)[0]
+        if tag%4 or tag<origin+0x144 or tag+4!=origin+len(image) or not covered(tag,4) or struct.unpack_from('<I',image,tag-origin)[0]!=OTA_MAGIC:raise ValueError('WB OTA end marker invalid')
+        if origin+((len(image)+4095)//4096)*4096>ceiling:raise ValueError('WB OTA exceeds application budget')
+        # Canonical erased-byte padding derived from verified addressed HEX.
+        (out/'firmware.bin').write_bytes(image)
     return ranges

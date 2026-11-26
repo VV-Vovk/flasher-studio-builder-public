@@ -38,3 +38,21 @@ class WBProject(unittest.TestCase):
             for bad in (start+good+rec(0x8000,0,b'x')+eof,start+good+rec(0,4,b'\x20\x03')+rec(0,0,b'x')+eof,start+rec(0,0,struct.pack('<II',0x20040000,0x08000009)+b'x'*2)+eof):
                 h.write_text(bad)
                 with self.assertRaises(ValueError):w.verify_output(p,R,32)
+
+    def test_ota_origin_and_tags(self):
+        cfg={'wbAppFlashKiB':32,'wbOtaLayout':w.OTA_LAYOUT}
+        self.assertEqual(w.origin(cfg,R,w.budget(cfg,R)),w.OTA_BASE)
+        for obj in ({**cfg,'wbAppFlashKiB':28},{**cfg,'wbOtaLayout':'custom'}):
+            with self.assertRaises(ValueError):w.budget(obj,R)
+        with self.assertRaises(ValueError):w.budget(cfg,{**R,'ramKiB':64})
+        with tempfile.TemporaryDirectory() as d:
+            p=Path(d);h=p/'firmware.hex';start=rec(0,4,b'\x08\x00');eof=rec(0,1)
+            prefix=rec(0x7000,0,struct.pack('<II',0x20030000,0x08007009)+b'\x00\xbf')
+            tag=rec(0x7140,0,struct.pack('<I',0x08007144))
+            end=rec(0x7144,0,struct.pack('<I',w.OTA_MAGIC))
+            h.write_text(start+prefix+tag+end+eof)
+            self.assertEqual(w.verify_output(p,R,32,w.OTA_BASE)[0]['start'],w.OTA_BASE)
+            self.assertEqual((p/'firmware.bin').read_bytes()[10:0x140],b'\xff'*(0x140-10))
+            with self.assertRaises(ValueError):w.verify_output(p,R,32)
+            h.write_text(start+prefix+tag+rec(0x7144,0,b'\x00'*4)+eof)
+            with self.assertRaisesRegex(ValueError,'end marker'):w.verify_output(p,R,32,w.OTA_BASE)

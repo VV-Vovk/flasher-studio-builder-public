@@ -77,6 +77,7 @@ def config(root,engine,target='',version=''):
         if len(mains)!=1:raise ValueError('Bare metal requires exactly one main.c or main.cpp')
         p=source_root(root,mains[0]); obj=source_config(root)
         if obj.get('engine',engine)!=engine:raise ValueError('Conflicting native engine')
+        if 'wbOtaLayout' in obj:raise ValueError('WB OTA requires complete CubeIDE GNU project')
         declared=obj.get('target','')
         if target and declared and target.upper()!=declared.upper():raise ValueError('Conflicting STM32 targets')
         target,_=profile(target or declared)

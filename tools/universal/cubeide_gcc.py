@@ -134,7 +134,9 @@ def build(p,work,run,exact_target=''):
         import stm32,wb_project
         _,recipe=stm32.profile(exact_target)
         wb_project.validate_plan(plan,exact_target,recipe)
-        limit=wb_project.budget(stm32.source_config(p),recipe)
+        cfg=stm32.source_config(p)
+        limit=wb_project.budget(cfg,recipe)
+        origin=wb_project.origin(cfg,recipe,limit)
     objdir=work/'cubeide-objects';objdir.mkdir();out=work/'native-output';out.mkdir();objects=[]
     for n,f in enumerate(plan['sources']):
         kind='compiler.cpp' if f.suffix in ('.cpp','.cc','.cxx') else 'assembler' if f.suffix in ('.s','.S') else 'compiler.c'
@@ -148,8 +150,9 @@ def build(p,work,run,exact_target=''):
     run('arm-none-eabi-objcopy','-O','ihex',elf,out/'firmware.hex');run('arm-none-eabi-objcopy','-O','binary',elf,out/'firmware.bin')
     meta={'engine':ENGINE,'target':plan['target'],'configuration':plan['configuration'],'sdkVersion':'system','toolchain':run('arm-none-eabi-gcc','--version',capture=True).splitlines()[0],'note':'Standard CubeIDE GNU import; generated source and project settings required'}
     if exact_target:
-        ranges=wb_project.verify_output(out,recipe,limit)
+        ranges=wb_project.verify_output(out,recipe,limit,origin)
         import wb_elf
-        memory_audit=wb_elf.audit(elf,recipe,limit)
+        memory_audit=wb_elf.audit(elf,recipe,limit,origin)
         meta.update(target=exact_target,memory=dict(recipe,flashKiB=limit),wbFullProject=True,wbFlashRanges=ranges,wbRadioStack='user-supplied; compatibility not verified',wbMemoryAudit=memory_audit)
+        if origin!=wb_project.BASE:meta.update(wbOtaLayout=wb_project.OTA_LAYOUT,wbOtaOrigin=origin)
     return out,meta

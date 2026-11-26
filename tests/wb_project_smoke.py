@@ -31,11 +31,22 @@ SECTIONS {
 }
 """)
     original=(p/'flash.ld').read_text()
-    for mode in ('valid','outside-budget','outside-ram','initialized-shared'):
+    source=(p/'Core/Src/main.c').read_text()
+    for mode in ('valid','outside-budget','outside-ram','initialized-shared','ota','ota-bad-marker','ota-reserved-ram'):
+        (p/'Core/Src/main.c').write_text(source)
+        (p/'flasher-native.json').write_text(json.dumps({'wbAppFlashKiB':32}))
         script=original
         if mode=='outside-budget':script=script.replace('0x08000000','0x08010000')
         if mode=='outside-ram':script=script.replace('0x20030000, LENGTH = 1K','0x20040000, LENGTH = 1K')
         if mode=='initialized-shared':script=script.replace('.mailbox (NOLOAD)', '.mailbox').replace('} > SHARED','} > SHARED AT> FLASH')
+        if mode.startswith('ota'):
+            (p/'flasher-native.json').write_text(json.dumps({'wbAppFlashKiB':32,'wbOtaLayout':'st-ble-app-0x7000'}))
+            script=script.replace('0x08000000, LENGTH = 32K','0x08007000, LENGTH = 4K').replace('0x20000000, LENGTH = 192K','0x20000004, LENGTH = 196604')
+            script=script.replace(' .text :', ' .tag 0x08007140 : { LONG(ADDR(.endtag)); } > FLASH\n .text :')
+            script=script.replace(' MAPPING_TABLE', ' .endtag : { LONG(0x94448a29); } > FLASH\n MAPPING_TABLE',1)
+            if mode=='ota-bad-marker':script=script.replace('0x94448a29','0x0')
+            if mode=='ota-reserved-ram':
+                script=script.replace('0x20000004, LENGTH = 196604','0x20000000, LENGTH = 192K').replace(' MAPPING_TABLE',' .bad (NOLOAD) : { LONG(0); } > RAM\n MAPPING_TABLE',1)
         (p/'flash.ld').write_text(script)
         if mode=='initialized-shared':
             f=p/'Core/Src/main.c';f.write_text(f.read_text().replace('mailbox;','mailbox=7;'))
@@ -55,7 +66,14 @@ SECTIONS {
             if os.environ.get('FS_WB_WEB_AUDIT'):
                 subprocess.run(['node',str(ROOT/'tests/wb_web_contract.mjs'),str(out),os.environ['FS_WB_WEB_AUDIT']],check=True)
             print('WB_FULL_PROJECT_PASS custom shared RAM NOLOAD and CPU1 HEX + ELF audit')
+        elif mode=='ota':
+            run.check_returncode()
+            m=json.loads((out/'manifest.json').read_text())['build']
+            assert m['wbOtaOrigin']==0x08007000 and m['wbOtaLayout']=='st-ble-app-0x7000'
+            assert m['wbFlashRanges'][0]['start']==0x08007000
+            b=(out/'firmware.bin').read_bytes();assert int.from_bytes(b[-4:],'little')==0x94448a29
+            print('WB_OTA_PROJECT_PASS relocated application and end marker')
         else:
-            expected={'outside-budget':'WB HEX must contain only CPU1','outside-ram':'WB ELF allocation outside','initialized-shared':'WB shared SRAM requires'}[mode]
+            expected={'ota-bad-marker':'WB OTA end marker invalid','ota-reserved-ram':'WB ELF allocation outside','outside-budget':'WB HEX must contain only CPU1','outside-ram':'WB ELF allocation outside','initialized-shared':'WB shared SRAM requires'}[mode]
             assert run.returncode and expected in run.stdout,run.stdout
             print('WB_FULL_PROJECT_REJECT '+mode)

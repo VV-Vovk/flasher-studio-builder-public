@@ -13,8 +13,10 @@ END=0x20040000
 def supported(recipe):
     return recipe.get('define')=='STM32WB55xx' and recipe.get('ramKiB')==192
 
-def audit(path,recipe,limit):
+def audit(path,recipe,limit,origin=BASE):
     if not supported(recipe):return None
+    if origin not in (BASE,0x08007000):raise ValueError('WB unknown application origin')
+    ram_start=RAM+4 if origin!=BASE else RAM
     data=Path(path).read_bytes()
     if not 52<=len(data)<=32*1024*1024 or data[:7]!=b'\x7fELF\x01\x01\x01':
         raise ValueError('WB ELF must be little-endian ELF32')
@@ -23,7 +25,7 @@ def audit(path,recipe,limit):
         raise ValueError('WB invalid executable ELF tables')
     ceiling=BASE+limit*1024
     def region(start,end):
-        for label,lo,hi in [('flash',BASE,ceiling),('sram1',RAM,A),('sram2a',A,B),('sram2b',B,END)]:
+        for label,lo,hi in [('flash',origin,ceiling),('sram1',ram_start,A),('sram2a',A,B),('sram2b',B,END)]:
             if lo<=start<end<=hi:return label
         raise ValueError('WB ELF allocation outside reviewed CPU1 memory')
     loads=[]
@@ -33,7 +35,7 @@ def audit(path,recipe,limit):
         if fs>ms or offset+fs>len(data):raise ValueError('WB invalid ELF load segment')
         if not ms:continue
         area=region(va,va+ms)
-        if fs and not BASE<=pa<pa+fs<=ceiling:raise ValueError('WB ELF load data outside application Flash')
+        if fs and not origin<=pa<pa+fs<=ceiling:raise ValueError('WB ELF load data outside application Flash')
         if area.startswith('sram2') and (fs or fl&1):raise ValueError('WB shared SRAM requires non-executable NOLOAD')
         loads.append((offset,va,pa,fs,ms))
     sections=[struct.unpack_from('<10I',data,shoff+i*40) for i in range(shnum)]
@@ -54,7 +56,7 @@ def audit(path,recipe,limit):
         else:
             if area.startswith('sram2') or offset+size>len(data):raise ValueError('WB initialized shared SRAM unsupported')
             matches=[pa+addr-va for po,va,pa,fs,ms in loads if va<=addr<addr+size<=va+fs and offset==po+addr-va]
-            if len(matches)!=1 or not BASE<=matches[0]<matches[0]+size<=ceiling:raise ValueError('WB section load address outside application Flash')
+            if len(matches)!=1 or not origin<=matches[0]<matches[0]+size<=ceiling:raise ValueError('WB section load address outside application Flash')
             load=matches[0]
         if area.startswith('sram2') and flags&4:raise ValueError('WB executable shared SRAM unsupported')
         result.append(dict(name=name,start=addr,endExclusive=addr+size,area=area,loadStart=load))

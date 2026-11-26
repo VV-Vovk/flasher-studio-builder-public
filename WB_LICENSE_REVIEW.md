@@ -15,3 +15,7 @@ Original audit code, not copied from vendor firmware. On WB55 variants with 192 
 ## License gate, 2026-11-26
 
 Reviewed exact upstream v1.24.0 LICENSE.md (Git blob c8ae886e79d0eca1e5f23df0fe5a49e42192edb5), tag resolves to 7c5aa7dcd2c0abe787f922bb06a6213c724d08e4. CMSIS and CMSIS Device Apache-2.0, STM32WB HAL BSD-3-Clause; STM32_WPAN and STM32_USB_Device_Library SLA0044, STM32 Audio PDM SLA0047, STM32 Projects SLA0044. Source-only checkout fails closed on changed tag/commit or license blob. Public CI accepts original source/test fixtures, not restricted vendor source, compiled images or private requests. No blanket redistribution clearance for linked firmware. Other vendors/SDK releases require separate component-level review before adding or distributing dependencies. The automated checks are guardrails, not a legal opinion.
+
+## OTA application build preview
+
+AN5247 Rev 8 documents the relocated user application; `wbOtaLayout: st-ble-app-0x7000` is an explicit opt-in for reviewed WB55 192 KiB SRAM1. Checks the addressed image, reserves the first SRAM1 word, validates the end marker and preserves the bootloader by not generating a full-image write. Original synthetic test sources only, no vendor OTA code, FUS, middleware, or binary distribution. Runtime OTA/radio compatibility still requires hardware validation. Source for protocol constants: ST AN5247 and upstream BLE HeartRate example (reference only, not copied).
