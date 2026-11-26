@@ -20,7 +20,7 @@ if(m.wbOtaLayout){
  console.log('WB_REAL_OTA_WEB_CONTRACT_PASS');
 }else{
 const p={audit,flashKiB:m.memory.flashKiB};
-const rv=(0x80000000|(10<<18)|(15<<25))>>>0;
+const rv=(0x80000000|(10<<18)|((m.memory.ramKiB===12?3:15)<<25))>>>0;
 assert.doesNotThrow(()=>wbCheckMemoryFit(p,65536,rv,0,m.memory.ramKiB));
 assert.throws(()=>wbCheckMemoryFit(p,65536,0x80000000,0,m.memory.ramKiB),/boundary/);
 console.log('WB_REAL_WEB_CONTRACT_PASS');
