@@ -1,0 +1,80 @@
+name: Private runner contract (synthetic only)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/private-runner-contract.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: STM32F070F6P6
+            pin: 90c2e9cdeec5276b128009c92b89ba9bc8ca00ef
+          - target: STM32WB55RGV6
+            pin: 7a4e655db9ee47cb01fee40b7d053c4bfe52c745
+    defaults:
+      run:
+        working-directory: builder-core
+    env:
+      RID: '00000000000000000000000000000000'
+      FORMAT: c
+      TARGET: ${{ matrix.target }}
+    steps:
+      - name: Fetch immutable public compiler core
+        working-directory: .
+        env:
+          BUILDER_CORE_REF: ${{ matrix.pin }}
+        run: |
+          set -euo pipefail
+          test ! -e "$GITHUB_WORKSPACE/builder-core"
+          git init "$GITHUB_WORKSPACE/builder-core"
+          git -C "$GITHUB_WORKSPACE/builder-core" fetch --no-tags --depth=1 https://github.com/VV-Vovk/flasher-studio-builder-public.git "$BUILDER_CORE_REF"
+          git -C "$GITHUB_WORKSPACE/builder-core" checkout --detach FETCH_HEAD
+          test "$(git -C "$GITHUB_WORKSPACE/builder-core" rev-parse HEAD)" = "$BUILDER_CORE_REF"
+          test ! -e "$GITHUB_WORKSPACE/builder-core/requests"
+          echo "Compiler core: $BUILDER_CORE_REF"
+      - uses: actions/setup-python@v6
+        with: {python-version: '3.11'}
+      - name: Create isolated synthetic input
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/requests/$RID"
+          printf 'int main(void){for(;;){}}\n' > "$GITHUB_WORKSPACE/requests/$RID/source.c"
+      - name: Validate input and choose engine
+        id: plan
+        run: |
+          python tools/universal/plan.py --source "$GITHUB_WORKSPACE/requests/$RID/source.$FORMAT" --engine stm32-bare --target "$TARGET" --version '' --github-output "$GITHUB_OUTPUT"
+      - name: Provision native SDK
+        env:
+          ENGINE: ${{ steps.plan.outputs.engine }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          TARGET: ${{ steps.plan.outputs.target }}
+        run: bash tools/universal/setup-native.sh "$ENGINE" "$VERSION" "$TARGET"
+      - name: Compile synthetic request
+        env:
+          ENGINE: ${{ steps.plan.outputs.engine }}
+          TARGET: ${{ steps.plan.outputs.target }}
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          python tools/universal/build.py --source "$GITHUB_WORKSPACE/requests/$RID/source.$FORMAT" --work "$RUNNER_TEMP/work" --out "$RUNNER_TEMP/output" --request-id "$RID" --engine "$ENGINE" --native-target "$TARGET" --sdk-version "$VERSION"
+          python - <<'PY'
+          import hashlib,json,os,pathlib
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'output'
+          m=json.loads((p/'manifest.json').read_text())
+          assert m['requestId']==os.environ['RID']
+          assert m['build']['target']==os.environ['TARGET']
+          for f in m['files']:
+              data=(p/f['file']).read_bytes()
+              assert len(data)==f['size'] and hashlib.sha256(data).hexdigest()==f['sha256']
+          assert any(f['format']=='hex' for f in m['files'])
+          assert not (pathlib.Path.cwd()/'requests').exists()
+          print('PINNED_CORE_CONTRACT_PASS')
+          PY
+      # No artifacts uploaded: these are synthetic tests, not user builds.
