@@ -8,7 +8,7 @@ const {auditWbElf,wbCheckMemoryFit}=await import(pathToFileURL(resolve(web,'wb-m
 const {parseHex}=await import(pathToFileURL(resolve(web,'programmers.js')).href);
 const m=JSON.parse(readFileSync(resolve(out,'manifest.json'),'utf8')).build;
 const hex=parseHex(readFileSync(resolve(out,'firmware.hex'),'utf8'));
-const audit=auditWbElf(new Uint8Array(readFileSync(resolve(out,'firmware.elf'))),m.memory.flashKiB,hex,m.wbOtaOrigin??0x08000000);
+const audit=auditWbElf(new Uint8Array(readFileSync(resolve(out,'firmware.elf'))),m.memory.flashKiB,hex,m.wbOtaOrigin??0x08000000,m.memory.ramKiB);
 assert.deepEqual(audit,m.wbMemoryAudit);
 if(m.wbOtaLayout){
  const {checkWbOtaImage}=await import(pathToFileURL(resolve(web,'wb-ota.js')).href);
@@ -21,7 +21,7 @@ if(m.wbOtaLayout){
 }else{
 const p={audit,flashKiB:m.memory.flashKiB};
 const rv=(0x80000000|(10<<18)|(15<<25))>>>0;
-assert.doesNotThrow(()=>wbCheckMemoryFit(p,65536,rv,0));
-assert.throws(()=>wbCheckMemoryFit(p,65536,0x80000000,0),/boundary/);
+assert.doesNotThrow(()=>wbCheckMemoryFit(p,65536,rv,0,m.memory.ramKiB));
+assert.throws(()=>wbCheckMemoryFit(p,65536,0x80000000,0,m.memory.ramKiB),/boundary/);
 console.log('WB_REAL_WEB_CONTRACT_PASS');
 }

@@ -23,3 +23,5 @@ AN5247 Rev 8 documents the relocated user application; `wbOtaLayout: st-ble-app-
 ## Expanded SRAM audit (AN5451 rev 5, table 7)
 
 WB55 64/192 KiB, WB35/30 32 KiB and WB50 64 KiB SRAM1: independent SRAM1 limit and fixed SRAM2a/b mappings. The intervening address hole is invalid. WB1x shared layout remains on hold. Synthetic tests only; no new vendor code or firmware. OTA relocation remains restricted to WB55 192 KiB pending separate review.
+
+Radio binary metadata review: three upstream family directories in v1.24.0 share LICENSE.md blob 2bb0eca192a05eff8533a93671c688bb2e6a5fc6 (SLA0044 Rev6, October 2025). Only file names, byte counts and Git blob identifiers are recorded in Web; no encrypted firmware, license acceptance or distribution by Builder. ST-specific use and release-note compatibility checks remain necessary. No CPU2 update commands yet.
