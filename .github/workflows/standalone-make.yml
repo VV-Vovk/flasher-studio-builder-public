@@ -1,0 +1,46 @@
+name: Standalone GNU Make ARM smoke
+on:
+  pull_request:
+    paths: ['tools/universal/**', 'tests/**', '.github/workflows/standalone-make.yml']
+  push:
+    branches: [main]
+    paths: ['tools/universal/**', '.github/workflows/standalone-make.yml']
+permissions: {contents: read}
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with: {persist-credentials: false}
+      - name: Provision GNU ARM
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi binutils-arm-none-eabi
+      - name: Build synthetic nested Makefile project with prebuilt files
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import zipfile,os,pathlib
+          z=pathlib.Path(os.environ['RUNNER_TEMP'])/'source.zip'
+          files={
+            'arbitrary/src/main.c':'void reset(void){for(;;){}}\\n__attribute__((section(".vectors"),used)) const void *vectors[]={ (void*)0x20001800,reset };\\n'.replace('\\n','\n'),
+            'arbitrary/flash.ld':'ENTRY(reset)\nMEMORY { FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 32K }\nSECTIONS { .text : { KEEP(*(.vectors)) *(.text*) *(.rodata*) } > FLASH }\n',
+            'arbitrary/README.md':'Synthetic example for STM32F070F6P6, not a user project.',
+            'arbitrary/Makefile':'CC=arm-none-eabi-gcc\nall: build/app.elf\nbuild/app.elf: src/main.c flash.ld\n\tmkdir -p build\n\t$(CC) -mcpu=cortex-m0 -mthumb -nostdlib -ffreestanding -Tflash.ld $< -o $@\n\tarm-none-eabi-objcopy -O binary $@ build/app.bin\n',
+            'arbitrary/firmware/old.elf':'not a build output',
+            'arbitrary/firmware/old.hex':':00000001FF\n'}
+          with zipfile.ZipFile(z,'w',zipfile.ZIP_DEFLATED) as f:
+              for k,v in files.items():f.writestr(k,v)
+          PY
+          python tools/universal/plan.py --source "$RUNNER_TEMP/source.zip" --engine auto --target '' --version '' --github-output "$RUNNER_TEMP/plan"
+          grep -q '^engine=stm32cube$' "$RUNNER_TEMP/plan"
+          FS_NATIVE_ENGINE=stm32cube FS_NATIVE_VERSION=system python tools/universal/build.py --source "$RUNNER_TEMP/source.zip" --engine stm32cube --work "$RUNNER_TEMP/work" --out "$RUNNER_TEMP/output" --request-id 00000000000000000000000000000000
+          python - <<'PY'
+          import os,pathlib,json,struct
+          p=pathlib.Path(os.environ['RUNNER_TEMP'])/'output'
+          m=json.loads((p/'manifest.json').read_text())
+          assert {f['file'] for f in m['files']}=={'app.bin','app.elf','app.hex'}
+          b=(p/'app.bin').read_bytes()
+          sp,pc=struct.unpack_from('<II',b)
+          assert sp==0x20001800 and pc&1 and 0x08000000<=pc-1<0x08000000+len(b)
+          print('STANDALONE_MAKE_GCC_PASS')
+          PY

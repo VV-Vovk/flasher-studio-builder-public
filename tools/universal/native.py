@@ -6,6 +6,22 @@ ENGINES={'esp-idf','stm32cube','zephyr','pico-sdk'}
 DEFAULTS={'esp-idf':'v5.4.2','zephyr':'v4.1.0','pico-sdk':'2.1.1','stm32cube':'system'}
 SKIP={'build','Debug','Release','.git','.pio','Drivers','Middlewares','lib','libraries','examples','managed_components'}
 
+def standalone_stm32_makefile(path):
+    """Recognize a self-contained STM32 GNU ARM Make project, not a random Makefile."""
+    text=path.read_text(errors='replace')[:65536]
+    if 'arm-none-eabi' not in text.lower():return False
+    root=path.parent
+    files=[f for f in root.rglob('*') if f.is_file() and not f.is_symlink() and not any(x in SKIP or x.lower() in {'firmware','vendor'} for x in f.relative_to(root).parts[:-1])]
+    if not any(f.suffix.lower() in {'.c','.cpp','.cc'} for f in files) or not any(f.suffix.lower()=='.ld' for f in files):return False
+    # Search project-local names and configuration only, not bundled SDK targets.
+    evidence=' '.join(str(f.relative_to(root)) for f in files)
+    evidence+=' '+text
+    for f in files:
+        if f.suffix.lower() in {'.ld','.ioc','.md','.c','.h','.s','.cpp'} and f.stat().st_size<=512*1024:
+            evidence+=' '+f.read_text(errors='replace')[:65536]
+            if re.search(r'\bstm32(?:[a-z][0-9]|wb|wl|wba)',evidence,re.I):return True
+    return bool(re.search(r'\bstm32(?:[a-z][0-9]|wb|wl|wba)',evidence,re.I))
+
 def candidates(root):
     found=[]
     for path in sorted(root.rglob('CMakeLists.txt')):
@@ -19,7 +35,7 @@ def candidates(root):
         found.append((engine,path.parent))
     for p in root.rglob('Makefile'):
         if any(x in SKIP for x in p.relative_to(root).parts[:-1]):continue
-        if (p.parent/'Core'/'Src').is_dir() and (list(p.parent.glob('*.ioc')) or 'arm-none-eabi' in p.read_text(errors='replace')[:65536]):found.append(('stm32cube',p.parent))
+        if ((p.parent/'Core'/'Src').is_dir() and (list(p.parent.glob('*.ioc')) or 'arm-none-eabi' in p.read_text(errors='replace')[:65536])) or standalone_stm32_makefile(p):found.append(('stm32cube',p.parent))
     return sorted(set(found),key=lambda x:(x[0],str(x[1])))
 
 def detect_native(root):
@@ -71,6 +87,28 @@ def copy_outputs(src,out,recursive=False):
         if dest.exists():raise ValueError('Multiple build outputs named '+p.name)
         shutil.copyfile(p,dest)
 
+def make_products(root):
+    suffixes={'.bin','.hex','.elf','.map','.eep'}
+    return {f.relative_to(root): (f.stat().st_mtime_ns,f.stat().st_size) for f in root.rglob('*')
+            if f.is_file() and not f.is_symlink() and f.suffix.lower() in suffixes
+            and not any(part in {'.git','.pio','CMakeFiles','_deps'} for part in f.relative_to(root).parts[:-1])}
+
+def standalone_make_build(project,out,run):
+    # Source archives may contain a previous firmware/ directory. Never return
+    # untouched uploaded binaries as a newly built result. Force the actual recipe.
+    before=make_products(project)
+    run('make','-B','-j2',cwd=project)
+    after=make_products(project)
+    changed=[p for p,stamp in after.items() if stamp!=before.get(p)]
+    elf=[p for p in changed if p.suffix.lower()=='.elf']
+    if len(elf)!=1:raise ValueError('Standalone Makefile must produce one new or rebuilt ELF')
+    base=elf[0].with_suffix('')
+    out.mkdir()
+    for rel in sorted(changed):
+        if rel.with_suffix('')==base:
+            shutil.copyfile(project/rel,out/rel.name)
+    return out
+
 def native_build(root,work,engine,target,version,run):
     p,target,version=native_config(root,engine,target,version)
     # SDKs installed by the trusted workflow before user code is executed.
@@ -118,7 +156,9 @@ def native_build(root,work,engine,target,version,run):
             run('cmake','-S',p,'-B',build,'-G','Ninja','-DCMAKE_TOOLCHAIN_FILE='+str(toolchains[0]),'-DCMAKE_BUILD_TYPE=Release','-DCMAKE_C_COMPILER_LAUNCHER=ccache','-DCMAKE_CXX_COMPILER_LAUNCHER=ccache')
             run('cmake','--build',build,'--parallel','2');copy_outputs(build,out,True)
         else:
-            run('make','-j2','BUILD_DIR='+str(build),cwd=p);copy_outputs(build,out,True)
+            if (p/'Core'/'Src').is_dir():
+                run('make','-j2','BUILD_DIR='+str(build),cwd=p);copy_outputs(build,out,True)
+            else:standalone_make_build(p,out,run)
         meta['toolchain']=run('arm-none-eabi-gcc','--version',capture=True).splitlines()[0]
         # Cube CMake may export ELF only. Derive self-addressed HEX with objcopy.
         for elf in out.glob('*.elf'):
